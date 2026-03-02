@@ -10,73 +10,51 @@
     <script type="module" src="/src/main.js"></script>
   </head>
   <body>
-    <main class="app-shell">
-      <section class="info-card" id="welcomeCard">
-        <h1>Сканируй винную этикетку</h1>
-        <p>
-          Наведи камеру на этикетку и дождись распознавания. После совпадения
-          откроется контент конкретно для этого вина.
-        </p>
-        <p class="hint">
-          MVP использует демо-таргет: распечатай или открой на втором экране
-          изображение бутылки из README.
-        </p>
-      </section>
-
-      <section class="content-card hidden" id="contentCard">
-        <h2 id="wineTitle"></h2>
-        <p id="wineDescription"></p>
-
-        <video id="wineVideo" controls playsinline webkit-playsinline></video>
-
-        <button id="quizButton" class="cta-btn">Пройти тест</button>
-      </section>
-
-      <section class="quiz-card hidden" id="quizCard">
-        <h3 id="quizQuestion"></h3>
-        <div id="quizAnswers" class="answers"></div>
-        <p id="quizResult" class="quiz-result"></p>
-        <button id="quizReset" class="secondary-btn">Пройти заново</button>
-      </section>
-    </main>
-
     <a-scene
       id="arScene"
-      mindar-image="imageTargetSrc: https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind; autoStart: true; uiScanning: yes; uiLoading: yes"
+      mindar-image="imageTargetSrc: https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind; autoStart: false; uiScanning: no; uiLoading: no"
       color-space="sRGB"
       renderer="colorManagement: true, physicallyCorrectLights"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
       embedded
-      class="ar-layer"
+      class="ar-scene hidden"
     >
-      <a-assets>
-        <img
-          id="winePoster"
-          src="https://images.unsplash.com/photo-1470158499416-75be9aa0c4db?auto=format&fit=crop&w=1200&q=80"
-          crossorigin="anonymous"
-        />
-      </a-assets>
-
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity id="targetEntity" mindar-image-target="targetIndex: 0">
-        <a-plane
-          id="previewPlane"
-          src="#winePoster"
-          position="0 0 0"
-          height="0.55"
-          width="0.8"
-          material="opacity: 0.92"
-        ></a-plane>
-        <a-text
-          value="Этикетка распознана"
-          position="0 -0.45 0"
-          align="center"
-          color="#ffffff"
-          width="2"
-        ></a-text>
-      </a-entity>
+      <a-entity id="targetEntity" mindar-image-target="targetIndex: 0"></a-entity>
     </a-scene>
+
+    <main class="overlay-shell">
+      <section class="panel start-panel" id="startPanel">
+        <p class="eyebrow">Wine Label AR</p>
+        <h1>Включи камеру и отсканируй этикетку</h1>
+        <p class="lead">
+          После распознавания ты увидишь интерактивный контент, привязанный к
+          конкретному вину.
+        </p>
+        <button class="primary-btn" id="startScanButton">
+          Включить камеру
+        </button>
+      </section>
+
+      <section class="scan-hud hidden" id="scanHud">
+        <p>Наведи камеру на винную этикетку</p>
+        <div class="scanner-frame" aria-hidden="true"></div>
+      </section>
+
+      <section class="success-overlay hidden" id="successOverlay">
+        <p>Well done!</p>
+      </section>
+
+      <section class="panel content-panel hidden" id="contentPanel">
+        <p class="eyebrow" id="wineSubtitle"></p>
+        <h2 id="wineTitle"></h2>
+        <p id="wineStory"></p>
+        <p class="meta" id="wineServing"></p>
+        <div class="pairings" id="pairings"></div>
+        <div class="gallery" id="gallery"></div>
+        <button class="ghost-btn" id="rescanButton">Сканировать снова</button>
+      </section>
+    </main>
   </body>
 </html>

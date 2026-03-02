@@ -4,21 +4,35 @@ const TARGET_TO_WINE = {
 };
 
 const ui = {
-  welcomeCard: document.getElementById('welcomeCard'),
-  contentCard: document.getElementById('contentCard'),
-  quizCard: document.getElementById('quizCard'),
+  arScene: document.getElementById('arScene'),
+  targetEntity: document.getElementById('targetEntity'),
+  startPanel: document.getElementById('startPanel'),
+  startScanButton: document.getElementById('startScanButton'),
+  scanHud: document.getElementById('scanHud'),
+  successOverlay: document.getElementById('successOverlay'),
+  contentPanel: document.getElementById('contentPanel'),
+  wineSubtitle: document.getElementById('wineSubtitle'),
   wineTitle: document.getElementById('wineTitle'),
-  wineDescription: document.getElementById('wineDescription'),
-  wineVideo: document.getElementById('wineVideo'),
-  quizButton: document.getElementById('quizButton'),
-  quizQuestion: document.getElementById('quizQuestion'),
-  quizAnswers: document.getElementById('quizAnswers'),
-  quizResult: document.getElementById('quizResult'),
-  quizReset: document.getElementById('quizReset'),
+  wineStory: document.getElementById('wineStory'),
+  wineServing: document.getElementById('wineServing'),
+  pairings: document.getElementById('pairings'),
+  gallery: document.getElementById('gallery'),
+  rescanButton: document.getElementById('rescanButton'),
 };
 
 let wines = [];
-let activeWine = null;
+let scanHandled = false;
+let arStarted = false;
+
+function waitForSceneLoaded() {
+  if (ui.arScene.hasLoaded) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    ui.arScene.addEventListener('loaded', resolve, { once: true });
+  });
+}
 
 async function loadContent() {
   const response = await fetch(CONTENT_PATH);
@@ -34,70 +48,128 @@ function getWineByTargetIndex(index) {
   return wines.find((wine) => wine.id === wineId) || null;
 }
 
-function showWineContent(wine) {
-  activeWine = wine;
-  ui.wineTitle.textContent = wine.title;
-  ui.wineDescription.textContent = wine.description;
-
-  ui.wineVideo.src = wine.videoUrl;
-  ui.wineVideo.poster = wine.posterUrl || '';
-  ui.wineVideo.load();
-
-  ui.welcomeCard.classList.add('hidden');
-  ui.contentCard.classList.remove('hidden');
-  ui.quizCard.classList.add('hidden');
-  ui.quizResult.textContent = '';
+function getMindArSystem() {
+  return ui.arScene.systems['mindar-image-system'];
 }
 
-function renderQuiz(question) {
-  ui.quizQuestion.textContent = question.question;
-  ui.quizAnswers.innerHTML = '';
+async function startAr() {
+  await waitForSceneLoaded();
+  ui.arScene.classList.remove('hidden');
+  const system = getMindArSystem();
 
-  question.answers.forEach((answer) => {
-    const button = document.createElement('button');
-    button.className = 'answer-btn';
-    button.textContent = answer.text;
-    button.addEventListener('click', () => {
-      ui.quizResult.textContent = answer.correct
-        ? 'Верно. Отлично чувствуешь стиль этого вина.'
-        : 'Не совсем. Попробуй еще раз.';
-    });
-    ui.quizAnswers.appendChild(button);
+  if (!system) {
+    throw new Error('AR система не инициализирована. Обнови страницу.');
+  }
+
+  if (!arStarted) {
+    await system.start();
+    arStarted = true;
+  }
+}
+
+async function stopAr() {
+  const system = getMindArSystem();
+  if (system && arStarted) {
+    await system.stop();
+    arStarted = false;
+  }
+  ui.arScene.classList.add('hidden');
+}
+
+function resetUiForScan() {
+  scanHandled = false;
+  ui.startPanel.classList.add('hidden');
+  ui.contentPanel.classList.add('hidden');
+  ui.successOverlay.classList.add('hidden');
+  ui.scanHud.classList.remove('hidden');
+}
+
+function showError(message) {
+  ui.startPanel.classList.remove('hidden');
+  ui.scanHud.classList.add('hidden');
+  ui.contentPanel.classList.add('hidden');
+  ui.successOverlay.classList.add('hidden');
+  ui.startPanel.innerHTML = `
+    <p class="eyebrow">Ошибка</p>
+    <h1>Не удалось запустить сканирование</h1>
+    <p class="lead">${message}</p>
+    <button class="primary-btn" id="retryButton">Попробовать снова</button>
+  `;
+
+  const retryButton = document.getElementById('retryButton');
+  retryButton.addEventListener('click', () => {
+    window.location.reload();
   });
+}
+
+function renderContent(wine) {
+  ui.wineSubtitle.textContent = wine.subtitle;
+  ui.wineTitle.textContent = wine.title;
+  ui.wineStory.textContent = wine.story;
+  ui.wineServing.textContent = wine.serving;
+
+  ui.pairings.innerHTML = '';
+  (wine.pairings || []).forEach((item) => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = item;
+    ui.pairings.appendChild(chip);
+  });
+
+  ui.gallery.innerHTML = '';
+  (wine.gallery || []).forEach((imageUrl) => {
+    const image = document.createElement('img');
+    image.className = 'gallery-image';
+    image.src = imageUrl;
+    image.alt = wine.title;
+    image.loading = 'lazy';
+    ui.gallery.appendChild(image);
+  });
+}
+
+async function onTargetFound() {
+  if (scanHandled) {
+    return;
+  }
+  scanHandled = true;
+
+  const indexAttr = ui.targetEntity.getAttribute('mindar-image-target');
+  const wine = getWineByTargetIndex(Number(indexAttr.targetIndex));
+  if (!wine) {
+    return;
+  }
+
+  ui.scanHud.classList.add('hidden');
+  ui.successOverlay.classList.remove('hidden');
+
+  renderContent(wine);
+
+  window.setTimeout(async () => {
+    ui.successOverlay.classList.add('hidden');
+    ui.contentPanel.classList.remove('hidden');
+    await stopAr();
+  }, 1300);
 }
 
 function attachEvents() {
-  const targetEntity = document.getElementById('targetEntity');
-
-  targetEntity.addEventListener('targetFound', () => {
-    const indexAttr = targetEntity.getAttribute('mindar-image-target');
-    const targetIndex = Number(indexAttr.targetIndex);
-    const wine = getWineByTargetIndex(targetIndex);
-
-    if (wine) {
-      showWineContent(wine);
+  ui.startScanButton.addEventListener('click', async () => {
+    try {
+      resetUiForScan();
+      await startAr();
+    } catch (error) {
+      showError(error.message || 'Проверь доступ к камере и попробуй снова.');
     }
   });
 
-  targetEntity.addEventListener('targetLost', () => {
-    ui.wineVideo.pause();
-  });
+  ui.targetEntity.addEventListener('targetFound', onTargetFound);
 
-  ui.quizButton.addEventListener('click', () => {
-    if (!activeWine || !activeWine.quiz || activeWine.quiz.length === 0) {
-      return;
+  ui.rescanButton.addEventListener('click', async () => {
+    try {
+      resetUiForScan();
+      await startAr();
+    } catch (error) {
+      showError(error.message || 'Проверь доступ к камере и попробуй снова.');
     }
-
-    renderQuiz(activeWine.quiz[0]);
-    ui.quizCard.classList.remove('hidden');
-  });
-
-  ui.quizReset.addEventListener('click', () => {
-    if (!activeWine || !activeWine.quiz || activeWine.quiz.length === 0) {
-      return;
-    }
-    ui.quizResult.textContent = '';
-    renderQuiz(activeWine.quiz[0]);
   });
 }
 
@@ -106,7 +178,7 @@ async function bootstrap() {
     await loadContent();
     attachEvents();
   } catch (error) {
-    ui.welcomeCard.innerHTML = `<h1>Ошибка загрузки</h1><p>${error.message}</p>`;
+    showError(error.message || 'Ошибка загрузки данных.');
   }
 }
 
