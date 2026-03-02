@@ -42,6 +42,14 @@ let arStarted = false;
 let viewportSyncBound = false;
 let editingWineId = null;
 
+const LABEL_FRAME = {
+  width: 0.68,
+  height: 1.02,
+  sweepStartY: 0.78,
+  sweepEndY: -0.78,
+  sweepDuration: 1100,
+};
+
 const SUCCESS_MS = 1300;
 
 function syncViewportHeight() {
@@ -167,6 +175,109 @@ function getWineByTargetIndex(index) {
   return wines.find((wine) => wine.targetIndex === targetIndex) || null;
 }
 
+function createLabelFrameMarkup() {
+  return `
+    <a-entity
+      class="label-outline"
+      visible="false"
+      position="0 0 0.01"
+      scale="${LABEL_FRAME.width} ${LABEL_FRAME.height} 1"
+    >
+      <a-plane
+        width="1"
+        height="1"
+        material="shader: flat; color: #dcefff; opacity: 0.06; transparent: true; side: double"
+      ></a-plane>
+
+      <a-plane
+        width="1.08"
+        height="0.03"
+        position="0 0.515 -0.001"
+        material="shader: flat; color: #c6e9ff; opacity: 0.2; transparent: true"
+        animation__glowtop="property: material.opacity; from: 0.12; to: 0.28; dir: alternate; dur: 420; loop: true"
+      ></a-plane>
+      <a-plane
+        width="1.08"
+        height="0.03"
+        position="0 -0.515 -0.001"
+        material="shader: flat; color: #c6e9ff; opacity: 0.2; transparent: true"
+        animation__glowbottom="property: material.opacity; from: 0.12; to: 0.28; dir: alternate; dur: 420; loop: true"
+      ></a-plane>
+      <a-plane
+        width="0.03"
+        height="1.08"
+        position="-0.515 0 -0.001"
+        material="shader: flat; color: #c6e9ff; opacity: 0.2; transparent: true"
+        animation__glowleft="property: material.opacity; from: 0.12; to: 0.28; dir: alternate; dur: 420; loop: true"
+      ></a-plane>
+      <a-plane
+        width="0.03"
+        height="1.08"
+        position="0.515 0 -0.001"
+        material="shader: flat; color: #c6e9ff; opacity: 0.2; transparent: true"
+        animation__glowright="property: material.opacity; from: 0.12; to: 0.28; dir: alternate; dur: 420; loop: true"
+      ></a-plane>
+
+      <a-plane
+        width="1.01"
+        height="0.008"
+        position="0 0.5 0"
+        material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
+      ></a-plane>
+      <a-plane
+        width="1.01"
+        height="0.008"
+        position="0 -0.5 0"
+        material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
+      ></a-plane>
+      <a-plane
+        width="0.008"
+        height="1.01"
+        position="-0.5 0 0"
+        material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
+      ></a-plane>
+      <a-plane
+        width="0.008"
+        height="1.01"
+        position="0.5 0 0"
+        material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
+      ></a-plane>
+
+      <a-entity
+        class="label-sweep-track"
+        position="0 ${LABEL_FRAME.sweepStartY} 0.002"
+        animation__sweep="property: position; from: 0 ${LABEL_FRAME.sweepStartY} 0.002; to: 0 ${LABEL_FRAME.sweepEndY} 0.002; dur: ${LABEL_FRAME.sweepDuration}; loop: true; easing: linear"
+      >
+        <a-plane
+          width="0.92"
+          height="0.78"
+          material="shader: flat; src: #sweepGradient; transparent: true; opacity: 0.95; side: double"
+        ></a-plane>
+      </a-entity>
+    </a-entity>
+  `;
+}
+
+function hideAllTargetFrames() {
+  ui.targetsRoot
+    .querySelectorAll('.label-outline')
+    .forEach((frame) => frame.setAttribute('visible', 'false'));
+}
+
+function showTargetFrame(targetIndex) {
+  const target = ui.targetsRoot.querySelector(
+    `[data-target-index="${targetIndex}"]`
+  );
+  if (!target) {
+    return;
+  }
+
+  const frame = target.querySelector('.label-outline');
+  if (frame) {
+    frame.setAttribute('visible', 'true');
+  }
+}
+
 function createTargetEntities() {
   ui.targetsRoot.innerHTML = '';
 
@@ -184,9 +295,16 @@ function createTargetEntities() {
 
   uniqueTargetIndices.forEach((targetIndex) => {
     const target = document.createElement('a-entity');
+    target.dataset.targetIndex = String(targetIndex);
     target.setAttribute('mindar-image-target', `targetIndex: ${targetIndex}`);
+    target.innerHTML = createLabelFrameMarkup();
     target.addEventListener('targetFound', () => {
       onTargetFound(targetIndex);
+    });
+    target.addEventListener('targetLost', () => {
+      if (!scanHandled) {
+        hideAllTargetFrames();
+      }
     });
     ui.targetsRoot.appendChild(target);
   });
@@ -216,12 +334,14 @@ async function stopAr() {
     arStarted = false;
   }
 
+  hideAllTargetFrames();
   document.body.classList.remove('is-scanning');
   ui.arScene.classList.add('hidden');
 }
 
 function resetUiForScan() {
   scanHandled = false;
+  hideAllTargetFrames();
   document.body.classList.add('is-scanning');
   ui.startPanel.classList.add('hidden');
   ui.adminPanel.classList.add('hidden');
@@ -301,6 +421,7 @@ async function onTargetFound(targetIndex) {
   }
 
   scanHandled = true;
+  showTargetFrame(targetIndex);
   renderContent(wine);
 
   window.setTimeout(() => {
