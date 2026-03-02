@@ -33,6 +33,25 @@ async function apiRequest(path, options = {}) {
   return payload;
 }
 
+async function fetchTargetsManifest() {
+  if (!isApiEnabled()) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/targets/manifest?ts=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const payload = await response.json();
+    return payload?.manifest || null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -431,11 +450,25 @@ export default function App() {
     try {
       setStartError('');
       setNotice({ text: '', type: '' });
+
+      if (isApiEnabled()) {
+        const manifest = await fetchTargetsManifest();
+        const hasCompiledTargets = Boolean(manifest?.ready);
+        setCompiledTargetsReady(hasCompiledTargets);
+        if (hasCompiledTargets) {
+          const cacheSuffix = manifest?.compiledAt ? `?v=${manifest.compiledAt}` : `?ts=${Date.now()}`;
+          setMindTargetSrc(`${API_BASE_URL}/targets/mind${cacheSuffix}`);
+        } else {
+          setMindTargetSrc(DEMO_MIND_TARGET_SRC);
+        }
+      }
+
       setMode('scan');
       setScanFeedbackPhase('idle');
       clearFeedbackTimers();
       scanHandledRef.current = false;
       document.body.classList.add('is-scanning');
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
       await startAr();
     } catch (error) {
       setMode('home');
@@ -866,6 +899,7 @@ export default function App() {
   return (
     <>
       <a-scene
+        key={mindTargetSrc}
         ref={sceneRef}
         mindar-image={`imageTargetSrc: ${mindTargetSrc}; autoStart: false; uiScanning: no; uiLoading: no`}
         color-space="sRGB"
