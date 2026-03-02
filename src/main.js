@@ -26,7 +26,7 @@ let wines = [];
 let scanHandled = false;
 let arStarted = false;
 let viewportSyncBound = false;
-const DEFAULT_OUTLINE = {
+const LABEL_FRAME = {
   width: 0.68,
   height: 1.02,
   sweepAngle: -24,
@@ -116,19 +116,19 @@ function pickNumber(value, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function applyOutlineSize(outline) {
+function applyOutlineSize() {
   const width =
-    pickPositive(outline?.width, DEFAULT_OUTLINE.width);
+    pickPositive(LABEL_FRAME.width, 0.68);
   const height =
-    pickPositive(outline?.height, DEFAULT_OUTLINE.height);
+    pickPositive(LABEL_FRAME.height, 1.02);
   const sweepAngle =
-    pickNumber(outline?.sweepAngle, DEFAULT_OUTLINE.sweepAngle);
+    pickNumber(LABEL_FRAME.sweepAngle, -24);
   const sweepOffsetX =
-    pickPositive(outline?.sweepOffsetX, DEFAULT_OUTLINE.sweepOffsetX);
+    pickPositive(LABEL_FRAME.sweepOffsetX, 0.78);
   const sweepOffsetY =
-    pickPositive(outline?.sweepOffsetY, DEFAULT_OUTLINE.sweepOffsetY);
+    pickPositive(LABEL_FRAME.sweepOffsetY, 0.66);
   const sweepDuration =
-    pickPositive(outline?.sweepDuration, DEFAULT_OUTLINE.sweepDuration);
+    pickPositive(LABEL_FRAME.sweepDuration, 980);
 
   ui.labelOutline.setAttribute('scale', `${width} ${height} 1`);
   ui.labelSweepTrack.setAttribute('rotation', `0 0 ${sweepAngle}`);
@@ -138,8 +138,8 @@ function applyOutlineSize(outline) {
   );
 }
 
-function showOutline(outline) {
-  applyOutlineSize(outline);
+function showOutline() {
+  applyOutlineSize();
   ui.labelOutline.setAttribute('visible', true);
 }
 
@@ -250,7 +250,7 @@ async function onTargetFound() {
     return;
   }
 
-  showOutline(wine.outline);
+  showOutline();
   renderContent(wine);
 
   window.setTimeout(() => {

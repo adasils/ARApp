@@ -6,14 +6,6 @@
       "subtitle": "Piemonte, Italy",
       "story": "Глубокий аромат вишни, розовых лепестков и теплых специй. Вино с долгим бархатным послевкусием и выразительной структурой.",
       "serving": "Подача: 16-18°C. Дай вину подышать 20 минут перед подачей.",
-      "outline": {
-        "width": 0.68,
-        "height": 1.02,
-        "sweepAngle": -24,
-        "sweepOffsetX": 0.78,
-        "sweepOffsetY": 0.66,
-        "sweepDuration": 980
-      },
       "pairings": ["Трюфельная паста", "Выдержанный сыр", "Говядина на гриле"],
       "gallery": [
         "https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?auto=format&fit=crop&w=1200&q=80",
