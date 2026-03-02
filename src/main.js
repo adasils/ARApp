@@ -23,6 +23,50 @@ const ui = {
 let wines = [];
 let scanHandled = false;
 let arStarted = false;
+let viewportSyncBound = false;
+
+function syncViewportHeight() {
+  document.documentElement.style.setProperty(
+    '--app-height',
+    `${window.innerHeight}px`
+  );
+}
+
+function applyCameraFullscreenStyles() {
+  const video = document.querySelector('video.mindar-video');
+  if (video) {
+    video.style.position = 'fixed';
+    video.style.top = '0';
+    video.style.left = '0';
+    video.style.width = '100vw';
+    video.style.height = 'var(--app-height)';
+    video.style.objectFit = 'cover';
+    video.style.zIndex = '0';
+    video.style.maxWidth = 'none';
+    video.style.maxHeight = 'none';
+  }
+
+  const overlay = document.querySelector('div.mindar-ui-overlay');
+  if (overlay) {
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.width = '100vw';
+    overlay.style.height = 'var(--app-height)';
+  }
+}
+
+function ensureCameraLayout() {
+  syncViewportHeight();
+  applyCameraFullscreenStyles();
+
+  if (!viewportSyncBound) {
+    viewportSyncBound = true;
+    window.addEventListener('resize', () => {
+      syncViewportHeight();
+      applyCameraFullscreenStyles();
+    });
+  }
+}
 
 function waitForSceneLoaded() {
   if (ui.arScene.hasLoaded) {
@@ -65,6 +109,8 @@ async function startAr() {
     await system.start();
     arStarted = true;
   }
+
+  ensureCameraLayout();
 }
 
 async function stopAr() {
@@ -175,6 +221,7 @@ function attachEvents() {
 
 async function bootstrap() {
   try {
+    ensureCameraLayout();
     await loadContent();
     attachEvents();
   } catch (error) {

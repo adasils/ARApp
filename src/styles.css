@@ -5,6 +5,7 @@
   --text: #f6f0e7;
   --muted: #d1c6b6;
   --accent: #f2b357;
+  --app-height: 100dvh;
 }
 
 * {
@@ -35,8 +36,8 @@ p {
   left: 0 !important;
   z-index: 1;
   width: 100vw !important;
-  height: 100dvh !important;
-  min-height: 100dvh !important;
+  height: var(--app-height) !important;
+  min-height: var(--app-height) !important;
   overflow: hidden !important;
   background: transparent !important;
 }
@@ -47,8 +48,8 @@ p {
   top: 0 !important;
   left: 0 !important;
   width: 100vw !important;
-  height: 100dvh !important;
-  min-height: 100dvh !important;
+  height: var(--app-height) !important;
+  min-height: var(--app-height) !important;
   object-fit: cover !important;
 }
 
@@ -57,8 +58,8 @@ video.mindar-video {
   top: 0 !important;
   left: 0 !important;
   width: 100vw !important;
-  height: 100dvh !important;
-  min-height: 100dvh !important;
+  height: var(--app-height) !important;
+  min-height: var(--app-height) !important;
   object-fit: cover !important;
   z-index: 0 !important;
 }
@@ -67,7 +68,11 @@ div.mindar-ui-overlay {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
-  height: 100dvh !important;
+  height: var(--app-height) !important;
+}
+
+canvas[data-aframe-canvas] {
+  opacity: 0 !important;
 }
 
 .overlay-shell {
