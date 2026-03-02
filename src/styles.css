@@ -52,6 +52,24 @@ p {
   object-fit: cover !important;
 }
 
+video.mindar-video {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  object-fit: cover !important;
+  z-index: 0 !important;
+}
+
+div.mindar-ui-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+}
+
 .overlay-shell {
   position: fixed;
   z-index: 2;
