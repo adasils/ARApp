@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
+const START_BACKGROUND_IMAGE = `${import.meta.env.BASE_URL}images/start-bg.svg`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const SUCCESS_MS = 1300;
 
@@ -531,20 +532,27 @@ export default function App() {
         {(mode === 'home' || mode === 'scan' || mode === 'content') && (
           <section className={mode === 'scan' ? 'scanner-panel scan-panel-hud' : 'panel scanner-panel'}>
             {mode === 'home' && (
-              <div className="home-content">
-                <p className="eyebrow">AR Scanning</p>
-                <h1>Сканируй этикетки и показывай историю вина</h1>
-                <p className="lead">
-                  Запусти камеру, наведи на этикетку и покажи карточку с контентом.
-                </p>
-                {startError && <p className="notice is-error">{startError}</p>}
-                <div className="actions-row">
-                  <button className="primary-btn" onClick={handleStartScan}>
-                    Включить камеру
-                  </button>
-                  <button className="ghost-btn" onClick={openAdmin}>
-                    Открыть админку
-                  </button>
+              <div
+                className="home-hero"
+                style={{
+                  backgroundImage: `linear-gradient(140deg, rgba(12, 8, 7, 0.5), rgba(52, 24, 16, 0.2)), url(${START_BACKGROUND_IMAGE})`,
+                }}
+              >
+                <div className="home-card">
+                  <p className="eyebrow">AR Scanning</p>
+                  <h1>Сканируй этикетки и показывай историю вина</h1>
+                  <p className="lead">
+                    Запусти камеру, наведи на этикетку и покажи карточку с контентом.
+                  </p>
+                  {startError && <p className="notice is-error">{startError}</p>}
+                  <div className="actions-row">
+                    <button className="primary-btn" onClick={handleStartScan}>
+                      Включить камеру
+                    </button>
+                    <button className="ghost-btn" onClick={openAdmin}>
+                      Открыть админку
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

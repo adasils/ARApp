@@ -104,6 +104,53 @@ div.mindar-ui-overlay {
   padding: clamp(20px, 4vw, 40px);
 }
 
+.home-hero {
+  position: relative;
+  min-height: clamp(560px, 76vh, 820px);
+  border-radius: 22px;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  align-content: end;
+  padding: clamp(18px, 3vw, 32px);
+}
+
+.home-hero::before {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  background: inherit;
+  background-size: cover;
+  background-position: center;
+  filter: blur(16px);
+  transform: scale(1.06);
+  opacity: 0.7;
+}
+
+.home-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 78% 20%, rgba(255, 194, 130, 0.22), transparent 40%),
+    linear-gradient(180deg, rgba(22, 13, 10, 0.06), rgba(10, 8, 8, 0.48));
+}
+
+.home-card {
+  position: relative;
+  z-index: 1;
+  width: min(640px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: clamp(16px, 2.5vw, 24px);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  background: rgba(255, 248, 242, 0.84);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 14px 35px rgba(23, 11, 9, 0.25);
+}
+
 .scan-panel-hud {
   width: 100%;
   min-height: var(--app-height);
@@ -482,6 +529,12 @@ h2 {
   .scanner-panel,
   .admin-panel {
     border-radius: 16px;
+  }
+
+  .home-hero {
+    border-radius: 14px;
+    min-height: clamp(500px, 70vh, 680px);
+    padding: 12px;
   }
 
   .scan-panel-hud {
