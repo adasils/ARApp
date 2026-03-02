@@ -99,7 +99,7 @@ div.mindar-ui-overlay {
 .app-shell {
   position: relative;
   z-index: 2;
-  min-height: var(--app-height);
+  min-height: 100svh;
   padding: 20px;
   padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset));
   display: grid;
@@ -108,6 +108,7 @@ div.mindar-ui-overlay {
 }
 
 .app-shell.is-scan {
+  min-height: var(--app-height);
   padding: 0;
   gap: 0;
 }
@@ -115,13 +116,6 @@ div.mindar-ui-overlay {
 .app-shell.is-home {
   padding: 0;
   gap: 0;
-}
-
-.app-shell.is-admin,
-.app-shell.is-content {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
 }
 
 .panel {
@@ -157,7 +151,7 @@ div.mindar-ui-overlay {
 
 .home-screen {
   position: relative;
-  min-height: var(--app-height);
+  min-height: 100svh;
   width: 100%;
   overflow: hidden;
   display: grid;
@@ -168,7 +162,7 @@ div.mindar-ui-overlay {
   position: absolute;
   inset: 0;
   z-index: 0;
-  min-height: var(--app-height);
+  min-height: 100svh;
   width: 100%;
   background:
     radial-gradient(circle at 24% 30%, rgba(124, 31, 54, 0.62), transparent 38%),
@@ -832,5 +826,26 @@ h2 {
 
   .gallery {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .home-pattern {
+    animation: none;
+    transform: rotate(-16deg) scale(1.18);
+    opacity: 0.045;
+  }
+
+  .home-abstract::before {
+    filter: blur(24px);
+    opacity: 0.72;
+  }
+
+  .home-card,
+  .panel,
+  .ghost-btn,
+  .content-state {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
