@@ -167,14 +167,20 @@ export default function App() {
     const applyViewportHeight = () => {
       const viewport = window.visualViewport;
       const rawViewportHeight = viewport?.height;
+      const fallbackHeight = Math.max(
+        window.innerHeight || 0,
+        document.documentElement?.clientHeight || 0,
+        Math.round((window.screen?.height || 0) * 0.9)
+      );
       const viewportHeight = Number.isFinite(rawViewportHeight) && rawViewportHeight > 320
         ? rawViewportHeight
-        : window.innerHeight;
+        : fallbackHeight;
+      const safeHeight = Math.max(320, Math.round(viewportHeight));
       const keyboardOffset = Math.max(
         0,
-        Math.round(window.innerHeight - viewportHeight - (viewport?.offsetTop || 0))
+        Math.round(window.innerHeight - safeHeight - (viewport?.offsetTop || 0))
       );
-      document.documentElement.style.setProperty('--app-height', `${Math.round(viewportHeight)}px`);
+      document.documentElement.style.setProperty('--app-height', `${safeHeight}px`);
       document.documentElement.style.setProperty(
         '--keyboard-offset',
         `${keyboardOffset > 0 && keyboardOffset < window.innerHeight * 0.55 ? keyboardOffset : 0}px`
@@ -204,11 +210,18 @@ export default function App() {
     };
 
     applyViewportHeight();
+    window.requestAnimationFrame(applyViewportHeight);
+    window.setTimeout(applyViewportHeight, 120);
+    window.setTimeout(applyViewportHeight, 420);
     window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    window.addEventListener('pageshow', onResize);
     window.visualViewport?.addEventListener('resize', onResize);
     document.addEventListener('focusin', onFocusIn);
     return () => {
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      window.removeEventListener('pageshow', onResize);
       window.visualViewport?.removeEventListener('resize', onResize);
       document.removeEventListener('focusin', onFocusIn);
     };
