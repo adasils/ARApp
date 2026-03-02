@@ -81,6 +81,7 @@ export default function App() {
   const targetsRootRef = useRef(null);
   const arStartedRef = useRef(false);
   const scanHandledRef = useRef(false);
+  const modeRef = useRef('home');
 
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
@@ -106,6 +107,10 @@ export default function App() {
     }
     return wines.reduce((max, wine) => Math.max(max, wine.targetIndex), 0) + 1;
   }, [wines]);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
@@ -300,7 +305,7 @@ export default function App() {
   }
 
   async function handleTargetFound(targetIndex) {
-    if (scanHandledRef.current || mode !== 'scan') {
+    if (scanHandledRef.current || modeRef.current !== 'scan') {
       return;
     }
 
