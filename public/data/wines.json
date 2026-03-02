@@ -1,0 +1,18 @@
+{
+  "wines": [
+    {
+      "id": "wine-demo-001",
+      "targetIndex": 0,
+      "title": "Barolo Riserva 2018",
+      "subtitle": "Piemonte, Italy",
+      "story": "Глубокий аромат вишни, розовых лепестков и теплых специй. Вино с долгим бархатным послевкусием и выразительной структурой.",
+      "serving": "Подача: 16-18°C. Дай вину подышать 20 минут перед подачей.",
+      "pairings": ["Трюфельная паста", "Выдержанный сыр", "Говядина на гриле"],
+      "gallery": [
+        "https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=1200&q=80",
+        "https://images.unsplash.com/photo-1474722883778-792e7990302f?auto=format&fit=crop&w=1200&q=80"
+      ]
+    }
+  ]
+}
