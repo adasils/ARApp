@@ -80,6 +80,11 @@ div.mindar-ui-overlay {
   gap: 18px;
 }
 
+.app-shell.is-scan {
+  padding: 0;
+  gap: 0;
+}
+
 .topbar {
   width: min(1200px, 100%);
   margin: 0 auto;
@@ -138,6 +143,18 @@ div.mindar-ui-overlay {
   display: grid;
   align-content: center;
   padding: clamp(20px, 4vw, 40px);
+}
+
+.scan-panel-hud {
+  width: 100%;
+  min-height: var(--app-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .home-content,
@@ -211,6 +228,21 @@ h2 {
   align-content: space-between;
   justify-items: center;
   padding: 14px 0 20px;
+}
+
+.scan-panel-hud .scan-state {
+  min-height: var(--app-height);
+  align-content: center;
+  gap: 20px;
+  padding: 24px 12px 36px;
+  pointer-events: none;
+}
+
+.scan-toolbar {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  pointer-events: auto;
 }
 
 .scan-pill {
@@ -478,6 +510,10 @@ h2 {
   .scanner-panel,
   .admin-panel {
     border-radius: 16px;
+  }
+
+  .scan-panel-hud {
+    border-radius: 0;
   }
 
   .actions-row {

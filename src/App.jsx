@@ -304,6 +304,13 @@ export default function App() {
     }
   }
 
+  async function handleStopScan() {
+    await stopAr();
+    setMode('home');
+    setIsSuccessShown(false);
+    scanHandledRef.current = false;
+  }
+
   async function handleTargetFound(targetIndex) {
     if (scanHandledRef.current || modeRef.current !== 'scan') {
       return;
@@ -520,7 +527,8 @@ export default function App() {
         <a-entity ref={targetsRootRef}></a-entity>
       </a-scene>
 
-      <main className="app-shell">
+      <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''}`}>
+        {mode !== 'scan' && (
         <header className="topbar">
           <p className="topbar-brand">Wine Label AR</p>
           <nav className="topbar-nav">
@@ -538,9 +546,10 @@ export default function App() {
             </button>
           </nav>
         </header>
+        )}
 
         {(mode === 'home' || mode === 'scan' || mode === 'content') && (
-          <section className="panel scanner-panel">
+          <section className={mode === 'scan' ? 'scanner-panel scan-panel-hud' : 'panel scanner-panel'}>
             {mode === 'home' && (
               <div className="home-content">
                 <p className="eyebrow">AR Scanning</p>
@@ -562,6 +571,11 @@ export default function App() {
 
             {mode === 'scan' && (
               <div className="scan-state">
+                <div className="scan-toolbar">
+                  <button className="ghost-btn" onClick={handleStopScan}>
+                    Отмена
+                  </button>
+                </div>
                 <p className="scan-pill">Наведи камеру на этикетку</p>
                 <div className="scanner-frame" aria-hidden="true"></div>
                 {isSuccessShown && (
