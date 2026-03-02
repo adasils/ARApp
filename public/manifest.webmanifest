@@ -1,0 +1,9 @@
+{
+  "name": "Wine Label AR",
+  "short_name": "Wine AR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d1021",
+  "theme_color": "#0d1021",
+  "icons": []
+}

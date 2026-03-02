@@ -166,13 +166,19 @@ export default function App() {
   useEffect(() => {
     const applyViewportHeight = () => {
       const viewport = window.visualViewport;
-      const viewportHeight = viewport?.height || window.innerHeight;
+      const rawViewportHeight = viewport?.height;
+      const viewportHeight = Number.isFinite(rawViewportHeight) && rawViewportHeight > 320
+        ? rawViewportHeight
+        : window.innerHeight;
       const keyboardOffset = Math.max(
         0,
         Math.round(window.innerHeight - viewportHeight - (viewport?.offsetTop || 0))
       );
       document.documentElement.style.setProperty('--app-height', `${Math.round(viewportHeight)}px`);
-      document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
+      document.documentElement.style.setProperty(
+        '--keyboard-offset',
+        `${keyboardOffset > 0 && keyboardOffset < window.innerHeight * 0.55 ? keyboardOffset : 0}px`
+      );
       applyCameraStyles();
     };
 
