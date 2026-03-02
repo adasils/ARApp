@@ -155,6 +155,7 @@ function resetUiForScan() {
   hideOutline();
   document.body.classList.add('is-scanning');
   ui.startPanel.classList.add('hidden');
+  ui.contentPanel.classList.remove('reveal');
   ui.contentPanel.classList.add('hidden');
   ui.successOverlay.classList.add('hidden');
   ui.scanHud.classList.remove('hidden');
@@ -163,6 +164,7 @@ function resetUiForScan() {
 function showError(message) {
   document.body.classList.remove('is-scanning');
   ui.startPanel.classList.remove('hidden');
+  ui.contentPanel.classList.remove('reveal');
   ui.scanHud.classList.add('hidden');
   ui.contentPanel.classList.add('hidden');
   ui.successOverlay.classList.add('hidden');
@@ -204,6 +206,13 @@ function renderContent(wine) {
   });
 }
 
+function revealContentPanel() {
+  ui.contentPanel.classList.remove('hidden');
+  ui.contentPanel.classList.remove('reveal');
+  void ui.contentPanel.offsetWidth;
+  ui.contentPanel.classList.add('reveal');
+}
+
 async function onTargetFound() {
   if (scanHandled) {
     return;
@@ -227,7 +236,7 @@ async function onTargetFound() {
   window.setTimeout(async () => {
     hideOutline();
     ui.successOverlay.classList.add('hidden');
-    ui.contentPanel.classList.remove('hidden');
+    revealContentPanel();
     await stopAr();
   }, OUTLINE_MS + SUCCESS_MS);
 }

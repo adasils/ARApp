@@ -72,13 +72,21 @@
       </section>
 
       <section class="panel content-panel hidden" id="contentPanel">
-        <p class="eyebrow" id="wineSubtitle"></p>
-        <h2 id="wineTitle"></h2>
-        <p id="wineStory"></p>
-        <p class="meta" id="wineServing"></p>
-        <div class="pairings" id="pairings"></div>
-        <div class="gallery" id="gallery"></div>
-        <button class="ghost-btn" id="rescanButton">Сканировать снова</button>
+        <p class="eyebrow reveal-item" style="--reveal-order: 0" id="wineSubtitle"></p>
+        <h2 class="reveal-item" style="--reveal-order: 1" id="wineTitle"></h2>
+        <p class="reveal-item" style="--reveal-order: 2" id="wineStory"></p>
+        <p class="meta reveal-item" style="--reveal-order: 3" id="wineServing"></p>
+        <section class="reveal-item" style="--reveal-order: 4">
+          <p class="section-title">Pairings</p>
+          <div class="pairings" id="pairings"></div>
+        </section>
+        <section class="reveal-item" style="--reveal-order: 5">
+          <p class="section-title">Visual Story</p>
+          <div class="gallery" id="gallery"></div>
+        </section>
+        <button class="ghost-btn reveal-item" style="--reveal-order: 6" id="rescanButton">
+          Сканировать снова
+        </button>
       </section>
     </main>
   </body>
