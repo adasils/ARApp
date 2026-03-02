@@ -164,16 +164,47 @@ export default function App() {
   }, [mode]);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
-
-    const onResize = () => {
-      document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
+    const applyViewportHeight = () => {
+      const viewport = window.visualViewport;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const keyboardOffset = Math.max(
+        0,
+        Math.round(window.innerHeight - viewportHeight - (viewport?.offsetTop || 0))
+      );
+      document.documentElement.style.setProperty('--app-height', `${Math.round(viewportHeight)}px`);
+      document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
       applyCameraStyles();
     };
 
+    const onResize = () => {
+      applyViewportHeight();
+    };
+
+    const onFocusIn = (event) => {
+      const element = event.target;
+      if (!(element instanceof HTMLElement)) {
+        return;
+      }
+      if (!element.matches('input, textarea, select')) {
+        return;
+      }
+
+      const scrollElement = document.querySelector('.app-shell') || document.scrollingElement;
+
+      window.setTimeout(() => {
+        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+        scrollElement?.scrollBy({ top: 120, left: 0, behavior: 'smooth' });
+      }, 240);
+    };
+
+    applyViewportHeight();
     window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
+    document.addEventListener('focusin', onFocusIn);
     return () => {
       window.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+      document.removeEventListener('focusin', onFocusIn);
     };
   }, []);
 
@@ -828,7 +859,9 @@ export default function App() {
         <a-entity ref={targetsRootRef}></a-entity>
       </a-scene>
 
-      <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''}`}>
+      <main
+        className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''} ${mode === 'admin' ? 'is-admin' : ''} ${mode === 'content' ? 'is-content' : ''}`}
+      >
         {mode === 'home' && (
           <section className="home-screen">
             <div className="home-abstract" aria-hidden="true"></div>

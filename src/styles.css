@@ -14,6 +14,7 @@
   --success: #79ebb7;
   --danger: #ff9696;
   --app-height: 100dvh;
+  --keyboard-offset: 0px;
 }
 
 * {
@@ -26,12 +27,16 @@ body,
   margin: 0;
   width: 100%;
   min-height: 100%;
+  height: 100%;
+  overflow-x: hidden;
 }
 
 body {
+  min-height: 100%;
   font-family: 'Avenir Next', 'SF Pro Display', 'Segoe UI', sans-serif;
   color: var(--text-strong);
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background:
     radial-gradient(circle at 14% 12%, rgba(121, 160, 255, 0.18), transparent 34%),
     radial-gradient(circle at 90% 14%, rgba(133, 241, 255, 0.18), transparent 30%),
@@ -90,6 +95,7 @@ div.mindar-ui-overlay {
   z-index: 2;
   min-height: var(--app-height);
   padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset));
   display: grid;
   gap: 14px;
   align-content: start;
@@ -103,6 +109,13 @@ div.mindar-ui-overlay {
 .app-shell.is-home {
   padding: 0;
   gap: 0;
+}
+
+.app-shell.is-admin,
+.app-shell.is-content {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .panel {
@@ -616,6 +629,7 @@ h2 {
   display: grid;
   gap: 12px;
   align-content: start;
+  padding-bottom: calc(12px + var(--keyboard-offset));
 }
 
 .form-grid {
@@ -689,6 +703,7 @@ h2 {
   color: var(--text-strong);
   background: linear-gradient(145deg, rgba(200, 223, 255, 0.12), rgba(16, 27, 44, 0.62));
   font: inherit;
+  scroll-margin-bottom: 180px;
 }
 
 .field input:focus,
@@ -781,6 +796,7 @@ h2 {
 @media (max-width: 640px) {
   .app-shell {
     padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset));
   }
 
   .scanner-panel,

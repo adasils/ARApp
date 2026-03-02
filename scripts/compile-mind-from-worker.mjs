@@ -1,7 +1,24 @@
 import { OfflineCompiler } from 'mind-ar/src/image-target/offline-compiler.js';
 import { loadImage } from 'canvas';
 
-const apiBase = String(process.env.WORKER_API_BASE || '').trim().replace(/\/$/, '');
+function normalizeApiBase(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+  try {
+    return new URL(withProtocol).toString().replace(/\/$/, '');
+  } catch {
+    throw new Error(
+      'WORKER_API_BASE must be a valid URL, for example: https://wine-label-api.<subdomain>.workers.dev'
+    );
+  }
+}
+
+const apiBase = normalizeApiBase(process.env.WORKER_API_BASE);
 const adminKey = String(process.env.TARGETS_ADMIN_KEY || '').trim();
 
 if (!apiBase) {
