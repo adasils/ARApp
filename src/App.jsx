@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
 const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind';
 const LOADER_MS = 850;
 const BURST_MS = 280;
