@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
-const START_BACKGROUND_IMAGE = `${import.meta.env.BASE_URL}images/background.png`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const SUCCESS_MS = 1300;
 
@@ -528,53 +527,57 @@ export default function App() {
         <a-entity ref={targetsRootRef}></a-entity>
       </a-scene>
 
-      <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''}`}>
-        {(mode === 'home' || mode === 'scan' || mode === 'content') && (
-          <section className={mode === 'scan' ? 'scanner-panel scan-panel-hud' : 'panel scanner-panel'}>
-            {mode === 'home' && (
-              <div
-                className="home-hero"
-                style={{
-                  backgroundImage: `linear-gradient(140deg, rgba(12, 8, 7, 0.5), rgba(52, 24, 16, 0.2)), url(${START_BACKGROUND_IMAGE})`,
-                }}
-              >
-                <div className="home-card">
-                  <p className="eyebrow">AR Scanning</p>
-                  <h1>Сканируй этикетки и показывай историю вина</h1>
-                  <p className="lead">
-                    Запусти камеру, наведи на этикетку и покажи карточку с контентом.
-                  </p>
-                  {startError && <p className="notice is-error">{startError}</p>}
-                  <div className="actions-row">
-                    <button className="primary-btn" onClick={handleStartScan}>
-                      Включить камеру
-                    </button>
-                    <button className="ghost-btn" onClick={openAdmin}>
-                      Открыть админку
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {mode === 'scan' && (
-              <div className="scan-state">
-                <div className="scan-toolbar">
-                  <button className="ghost-btn" onClick={handleStopScan}>
-                    Отмена
+      <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''}`}>
+        {mode === 'home' && (
+          <section className="home-screen">
+            <div className="home-abstract" aria-hidden="true"></div>
+            <div className="home-center">
+              <div className="home-card">
+                <p className="eyebrow">AR Scanning</p>
+                <h1>Сканируй этикетки и показывай историю вина</h1>
+                <p className="lead">
+                  Запусти камеру, наведи на этикетку и покажи карточку с контентом.
+                </p>
+                {startError && <p className="notice is-error">{startError}</p>}
+                <div className="actions-row">
+                  <button className="primary-btn" onClick={handleStartScan}>
+                    Начать сканирование
                   </button>
                 </div>
-                <p className="scan-pill">Наведи камеру на этикетку</p>
-                <div className="scanner-frame" aria-hidden="true"></div>
-                {isSuccessShown && (
-                  <div className="success-overlay">
-                    <p>Well done!</p>
-                  </div>
-                )}
               </div>
-            )}
+            </div>
 
-            {mode === 'content' && contentWine && (
+            <footer className="entry-footer home-footer">
+              <button className="admin-link" onClick={openAdmin}>
+                Перейти в админку
+              </button>
+              <p className="copyright">VineLabs 2026</p>
+            </footer>
+          </section>
+        )}
+
+        {mode === 'scan' && (
+          <section className="scanner-panel scan-panel-hud">
+            <div className="scan-state">
+              <div className="scan-toolbar">
+                <button className="ghost-btn" onClick={handleStopScan}>
+                  Отмена
+                </button>
+              </div>
+              <p className="scan-pill">Наведи камеру на этикетку</p>
+              <div className="scanner-frame" aria-hidden="true"></div>
+              {isSuccessShown && (
+                <div className="success-overlay">
+                  <p>Well done!</p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {mode === 'content' && contentWine && (
+          <>
+            <section className="panel scanner-panel">
               <div className="content-state">
                 <p className="eyebrow">{contentWine.subtitle}</p>
                 <h2>{contentWine.title}</h2>
@@ -610,17 +613,14 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            )}
-          </section>
-        )}
-
-        {(mode === 'home' || mode === 'content') && (
-          <footer className="entry-footer">
-            <button className="admin-link" onClick={openAdmin}>
-              Перейти в админку
-            </button>
-            <p className="copyright">VineLabs 2026</p>
-          </footer>
+            </section>
+            <footer className="entry-footer">
+              <button className="admin-link" onClick={openAdmin}>
+                Перейти в админку
+              </button>
+              <p className="copyright">VineLabs 2026</p>
+            </footer>
+          </>
         )}
 
         {mode === 'admin' && (

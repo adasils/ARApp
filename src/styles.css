@@ -100,6 +100,11 @@ div.mindar-ui-overlay {
   gap: 0;
 }
 
+.app-shell.is-home {
+  padding: 0;
+  gap: 0;
+}
+
 .panel {
   position: relative;
   width: min(1200px, 100%);
@@ -131,38 +136,58 @@ div.mindar-ui-overlay {
   padding: clamp(20px, 4vw, 40px);
 }
 
-.home-hero {
+.home-screen {
   position: relative;
-  min-height: clamp(560px, 76vh, 820px);
-  border-radius: 22px;
+  min-height: var(--app-height);
+  width: 100%;
   overflow: hidden;
-  background-size: cover;
-  background-position: center;
   display: grid;
-  align-content: end;
-  padding: clamp(18px, 3vw, 32px);
 }
 
-.home-hero::before {
+.home-abstract {
+  position: relative;
+  min-height: var(--app-height);
+  width: 100%;
+  background:
+    radial-gradient(circle at 24% 30%, rgba(124, 31, 54, 0.62), transparent 38%),
+    radial-gradient(circle at 74% 28%, rgba(88, 43, 128, 0.55), transparent 40%),
+    radial-gradient(circle at 60% 78%, rgba(161, 48, 70, 0.5), transparent 44%),
+    radial-gradient(circle at 18% 82%, rgba(84, 22, 54, 0.54), transparent 42%),
+    linear-gradient(145deg, #0d1021, #191634 44%, #29122a 100%);
+}
+
+.home-abstract::before {
   content: '';
   position: absolute;
-  inset: -16px;
-  background: inherit;
-  background-size: cover;
-  background-position: center;
-  filter: blur(22px);
-  transform: scale(1.07);
-  opacity: 0.84;
+  inset: -10%;
+  background:
+    radial-gradient(circle at 36% 34%, rgba(255, 124, 146, 0.38), transparent 33%),
+    radial-gradient(circle at 70% 56%, rgba(157, 100, 255, 0.36), transparent 35%),
+    radial-gradient(circle at 44% 74%, rgba(255, 78, 115, 0.25), transparent 40%);
+  filter: blur(42px);
+  transform: scale(1.08);
+  opacity: 0.9;
 }
 
-.home-hero::after {
+.home-abstract::after {
   content: '';
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 82% 18%, rgba(144, 226, 255, 0.28), transparent 40%),
-    radial-gradient(circle at 26% 82%, rgba(121, 116, 255, 0.3), transparent 42%),
-    linear-gradient(180deg, rgba(4, 10, 21, 0.16), rgba(6, 13, 27, 0.58));
+    linear-gradient(180deg, rgba(10, 13, 28, 0.24), rgba(7, 10, 23, 0.52)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.03) 0 1px,
+      transparent 1px 14px
+    );
+}
+
+.home-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 3vw, 28px);
 }
 
 .home-card {
@@ -295,6 +320,14 @@ h2 {
   display: grid;
   gap: 6px;
   padding-bottom: 8px;
+}
+
+.home-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 16px;
+  z-index: 2;
 }
 
 .admin-link {
@@ -572,9 +605,7 @@ h2 {
     border-radius: 16px;
   }
 
-  .home-hero {
-    border-radius: 14px;
-    min-height: clamp(500px, 70vh, 680px);
+  .home-center {
     padding: 12px;
   }
 
