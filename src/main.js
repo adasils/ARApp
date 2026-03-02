@@ -1,4 +1,4 @@
-const CONTENT_PATH = '/data/wines.json';
+const CONTENT_PATH = './data/wines.json';
 const TARGET_TO_WINE = {
   0: 'wine-demo-001',
 };
