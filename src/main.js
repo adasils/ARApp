@@ -1,15 +1,12 @@
 const CONTENT_PATH = './data/wines.json';
-const TARGET_TO_WINE = {
-  0: 'wine-demo-001',
-};
+const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v1';
 
 const ui = {
   arScene: document.getElementById('arScene'),
-  targetEntity: document.getElementById('targetEntity'),
-  labelOutline: document.getElementById('labelOutline'),
-  labelSweepTrack: document.getElementById('labelSweepTrack'),
+  targetsRoot: document.getElementById('targetsRoot'),
   startPanel: document.getElementById('startPanel'),
   startScanButton: document.getElementById('startScanButton'),
+  openAdminButton: document.getElementById('openAdminButton'),
   scanHud: document.getElementById('scanHud'),
   successOverlay: document.getElementById('successOverlay'),
   contentPanel: document.getElementById('contentPanel'),
@@ -20,21 +17,31 @@ const ui = {
   pairings: document.getElementById('pairings'),
   gallery: document.getElementById('gallery'),
   rescanButton: document.getElementById('rescanButton'),
+  adminPanel: document.getElementById('adminPanel'),
+  closeAdminButton: document.getElementById('closeAdminButton'),
+  newWineButton: document.getElementById('newWineButton'),
+  wineAdminList: document.getElementById('wineAdminList'),
+  wineForm: document.getElementById('wineForm'),
+  wineIdInput: document.getElementById('wineIdInput'),
+  wineTargetInput: document.getElementById('wineTargetInput'),
+  wineTitleInput: document.getElementById('wineTitleInput'),
+  wineSubtitleInput: document.getElementById('wineSubtitleInput'),
+  wineStoryInput: document.getElementById('wineStoryInput'),
+  wineServingInput: document.getElementById('wineServingInput'),
+  winePairingsInput: document.getElementById('winePairingsInput'),
+  wineGalleryInput: document.getElementById('wineGalleryInput'),
+  adminNotice: document.getElementById('adminNotice'),
+  deleteWineButton: document.getElementById('deleteWineButton'),
+  downloadJsonButton: document.getElementById('downloadJsonButton'),
+  resetDataButton: document.getElementById('resetDataButton'),
 };
 
 let wines = [];
 let scanHandled = false;
 let arStarted = false;
 let viewportSyncBound = false;
-const LABEL_FRAME = {
-  width: 0.68,
-  height: 1.02,
-  sweepAngle: -28,
-  sweepOffsetX: 1.05,
-  sweepOffsetY: 1.05,
-  sweepDuration: 1200,
-};
-const OUTLINE_MS = 700;
+let editingWineId = null;
+
 const SUCCESS_MS = 1300;
 
 function syncViewportHeight() {
@@ -90,61 +97,99 @@ function waitForSceneLoaded() {
   });
 }
 
-async function loadContent() {
-  const response = await fetch(CONTENT_PATH);
-  if (!response.ok) {
-    throw new Error(`Не удалось загрузить ${CONTENT_PATH}`);
-  }
-  const payload = await response.json();
-  wines = payload.wines || [];
-}
-
-function getWineByTargetIndex(index) {
-  const wineId = TARGET_TO_WINE[index];
-  return wines.find((wine) => wine.id === wineId) || null;
-}
-
 function getMindArSystem() {
   return ui.arScene.systems['mindar-image-system'];
 }
 
-function pickPositive(value, fallback) {
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+function toStringValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
-function pickNumber(value, fallback) {
-  return Number.isFinite(value) ? value : fallback;
+function toArrayValue(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
 }
 
-function applyOutlineSize() {
-  const width =
-    pickPositive(LABEL_FRAME.width, 0.68);
-  const height =
-    pickPositive(LABEL_FRAME.height, 1.02);
-  const sweepAngle =
-    pickNumber(LABEL_FRAME.sweepAngle, -28);
-  const sweepOffsetX =
-    pickPositive(LABEL_FRAME.sweepOffsetX, 1.05);
-  const sweepOffsetY =
-    pickPositive(LABEL_FRAME.sweepOffsetY, 1.05);
-  const sweepDuration =
-    pickPositive(LABEL_FRAME.sweepDuration, 1200);
-
-  ui.labelOutline.setAttribute('scale', `${width} ${height} 1`);
-  ui.labelSweepTrack.setAttribute('rotation', `0 0 ${sweepAngle}`);
-  ui.labelSweepTrack.setAttribute(
-    'animation__sweep',
-    `property: position; from: -${sweepOffsetX} -${sweepOffsetY} 0.002; to: ${sweepOffsetX} ${sweepOffsetY} 0.002; dur: ${sweepDuration}; loop: true; easing: linear`
-  );
+function normalizeWine(wine, fallbackIndex) {
+  const targetIndex = Number.parseInt(wine?.targetIndex, 10);
+  return {
+    id: toStringValue(wine?.id) || `wine-${fallbackIndex + 1}`,
+    targetIndex: Number.isInteger(targetIndex) && targetIndex >= 0
+      ? targetIndex
+      : fallbackIndex,
+    title: toStringValue(wine?.title),
+    subtitle: toStringValue(wine?.subtitle),
+    story: toStringValue(wine?.story),
+    serving: toStringValue(wine?.serving),
+    pairings: toArrayValue(wine?.pairings),
+    gallery: toArrayValue(wine?.gallery),
+  };
 }
 
-function showOutline() {
-  applyOutlineSize();
-  ui.labelOutline.setAttribute('visible', true);
+function normalizeWines(items) {
+  return (items || []).map((wine, index) => normalizeWine(wine, index));
 }
 
-function hideOutline() {
-  ui.labelOutline.setAttribute('visible', false);
+async function loadRemoteContent() {
+  const response = await fetch(CONTENT_PATH);
+  if (!response.ok) {
+    throw new Error(`Не удалось загрузить ${CONTENT_PATH}`);
+  }
+
+  const payload = await response.json();
+  return normalizeWines(payload.wines);
+}
+
+async function loadContent() {
+  const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
+  if (localData) {
+    try {
+      const parsed = JSON.parse(localData);
+      return normalizeWines(parsed.wines);
+    } catch (error) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  }
+
+  return loadRemoteContent();
+}
+
+function saveContentToStorage() {
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ wines }));
+}
+
+function getWineByTargetIndex(index) {
+  const targetIndex = Number.parseInt(index, 10);
+  return wines.find((wine) => wine.targetIndex === targetIndex) || null;
+}
+
+function createTargetEntities() {
+  ui.targetsRoot.innerHTML = '';
+
+  const uniqueTargetIndices = [
+    ...new Set(
+      wines
+        .map((wine) => Number.parseInt(wine.targetIndex, 10))
+        .filter((index) => Number.isInteger(index) && index >= 0)
+    ),
+  ].sort((a, b) => a - b);
+
+  if (uniqueTargetIndices.length === 0) {
+    uniqueTargetIndices.push(0);
+  }
+
+  uniqueTargetIndices.forEach((targetIndex) => {
+    const target = document.createElement('a-entity');
+    target.setAttribute('mindar-image-target', `targetIndex: ${targetIndex}`);
+    target.addEventListener('targetFound', () => {
+      onTargetFound(targetIndex);
+    });
+    ui.targetsRoot.appendChild(target);
+  });
 }
 
 async function startAr() {
@@ -170,16 +215,16 @@ async function stopAr() {
     await system.stop();
     arStarted = false;
   }
-  hideOutline();
+
   document.body.classList.remove('is-scanning');
   ui.arScene.classList.add('hidden');
 }
 
 function resetUiForScan() {
   scanHandled = false;
-  hideOutline();
   document.body.classList.add('is-scanning');
   ui.startPanel.classList.add('hidden');
+  ui.adminPanel.classList.add('hidden');
   ui.contentPanel.classList.remove('reveal');
   ui.contentPanel.classList.add('hidden');
   ui.successOverlay.classList.add('hidden');
@@ -189,21 +234,28 @@ function resetUiForScan() {
 function showError(message) {
   document.body.classList.remove('is-scanning');
   ui.startPanel.classList.remove('hidden');
+  ui.adminPanel.classList.add('hidden');
   ui.contentPanel.classList.remove('reveal');
   ui.scanHud.classList.add('hidden');
   ui.contentPanel.classList.add('hidden');
   ui.successOverlay.classList.add('hidden');
-  ui.startPanel.innerHTML = `
-    <p class="eyebrow">Ошибка</p>
-    <h1>Не удалось запустить сканирование</h1>
-    <p class="lead">${message}</p>
-    <button class="primary-btn" id="retryButton">Попробовать снова</button>
-  `;
 
-  const retryButton = document.getElementById('retryButton');
-  retryButton.addEventListener('click', () => {
-    window.location.reload();
-  });
+  let errorLine = document.getElementById('startErrorLine');
+  if (!errorLine) {
+    errorLine = document.createElement('p');
+    errorLine.id = 'startErrorLine';
+    errorLine.className = 'lead';
+    ui.startPanel.appendChild(errorLine);
+  }
+
+  errorLine.textContent = message;
+}
+
+function clearStartError() {
+  const errorLine = document.getElementById('startErrorLine');
+  if (errorLine) {
+    errorLine.remove();
+  }
 }
 
 function renderContent(wine) {
@@ -238,57 +290,333 @@ function revealContentPanel() {
   ui.contentPanel.classList.add('reveal');
 }
 
-async function onTargetFound() {
+async function onTargetFound(targetIndex) {
   if (scanHandled) {
     return;
   }
-  scanHandled = true;
 
-  const indexAttr = ui.targetEntity.getAttribute('mindar-image-target');
-  const wine = getWineByTargetIndex(Number(indexAttr.targetIndex));
+  const wine = getWineByTargetIndex(targetIndex);
   if (!wine) {
     return;
   }
 
-  showOutline();
+  scanHandled = true;
   renderContent(wine);
 
   window.setTimeout(() => {
     ui.scanHud.classList.add('hidden');
     ui.successOverlay.classList.remove('hidden');
-  }, OUTLINE_MS);
+  }, 180);
 
   window.setTimeout(async () => {
-    hideOutline();
     ui.successOverlay.classList.add('hidden');
     revealContentPanel();
     await stopAr();
-  }, OUTLINE_MS + SUCCESS_MS);
+  }, SUCCESS_MS + 180);
+}
+
+function parsePairingsInput(value) {
+  return String(value || '')
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseGalleryInput(value) {
+  return String(value || '')
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getNextTargetIndex() {
+  if (!wines.length) {
+    return 0;
+  }
+
+  return wines.reduce((max, wine) => Math.max(max, wine.targetIndex), 0) + 1;
+}
+
+function showAdminNotice(message, type = '') {
+  ui.adminNotice.textContent = message || '';
+  ui.adminNotice.classList.remove('is-error', 'is-success');
+
+  if (type === 'error') {
+    ui.adminNotice.classList.add('is-error');
+  }
+
+  if (type === 'success') {
+    ui.adminNotice.classList.add('is-success');
+  }
+}
+
+function renderAdminList() {
+  ui.wineAdminList.innerHTML = '';
+
+  if (!wines.length) {
+    const emptyState = document.createElement('div');
+    emptyState.className = 'admin-empty';
+    emptyState.textContent = 'Пока нет вин. Создай первую карточку.';
+    ui.wineAdminList.appendChild(emptyState);
+    return;
+  }
+
+  wines.forEach((wine) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'admin-item';
+
+    if (wine.id === editingWineId) {
+      item.classList.add('is-active');
+    }
+
+    item.innerHTML = `
+      <div class="admin-item-title">${wine.title || wine.id}</div>
+      <div class="admin-item-subtitle">${wine.subtitle || 'Без подзаголовка'}</div>
+      <div class="admin-item-meta">targetIndex: ${wine.targetIndex}</div>
+    `;
+
+    item.addEventListener('click', () => {
+      openWineForEdit(wine.id);
+    });
+
+    ui.wineAdminList.appendChild(item);
+  });
+}
+
+function fillWineForm(wine) {
+  ui.wineIdInput.value = wine.id;
+  ui.wineTargetInput.value = String(wine.targetIndex);
+  ui.wineTitleInput.value = wine.title;
+  ui.wineSubtitleInput.value = wine.subtitle;
+  ui.wineStoryInput.value = wine.story;
+  ui.wineServingInput.value = wine.serving;
+  ui.winePairingsInput.value = wine.pairings.join('\n');
+  ui.wineGalleryInput.value = wine.gallery.join('\n');
+}
+
+function openWineForEdit(wineId) {
+  const wine = wines.find((item) => item.id === wineId);
+  if (!wine) {
+    return;
+  }
+
+  editingWineId = wine.id;
+  fillWineForm(wine);
+  renderAdminList();
+}
+
+function resetFormForNewWine() {
+  editingWineId = null;
+  ui.wineForm.reset();
+  ui.wineTargetInput.value = String(getNextTargetIndex());
+  showAdminNotice('Новая карточка: заполни поля и нажми «Сохранить».');
+  renderAdminList();
+}
+
+function collectWineFromForm() {
+  const id = toStringValue(ui.wineIdInput.value);
+  const targetIndex = Number.parseInt(ui.wineTargetInput.value, 10);
+  const title = toStringValue(ui.wineTitleInput.value);
+  const subtitle = toStringValue(ui.wineSubtitleInput.value);
+  const story = toStringValue(ui.wineStoryInput.value);
+  const serving = toStringValue(ui.wineServingInput.value);
+
+  if (!id) {
+    throw new Error('Укажи ID вина.');
+  }
+
+  if (!Number.isInteger(targetIndex) || targetIndex < 0) {
+    throw new Error('Target Index должен быть целым числом 0 или больше.');
+  }
+
+  if (!title || !subtitle || !story || !serving) {
+    throw new Error('Заполни заголовок, подзаголовок, историю и подачу.');
+  }
+
+  return {
+    id,
+    targetIndex,
+    title,
+    subtitle,
+    story,
+    serving,
+    pairings: parsePairingsInput(ui.winePairingsInput.value),
+    gallery: parseGalleryInput(ui.wineGalleryInput.value),
+  };
+}
+
+function upsertWine(wine) {
+  const existingIndex = wines.findIndex((item) => item.id === editingWineId);
+
+  if (existingIndex === -1) {
+    wines.push(wine);
+  } else {
+    wines[existingIndex] = wine;
+  }
+
+  wines.sort((a, b) => {
+    if (a.targetIndex !== b.targetIndex) {
+      return a.targetIndex - b.targetIndex;
+    }
+    return a.title.localeCompare(b.title, 'ru');
+  });
+}
+
+function downloadJson() {
+  const payload = JSON.stringify({ wines }, null, 2);
+  const blob = new Blob([payload], { type: 'application/json' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'wines.json';
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+async function openAdminPanel() {
+  await stopAr();
+  scanHandled = false;
+  document.body.classList.remove('is-scanning');
+
+  ui.scanHud.classList.add('hidden');
+  ui.successOverlay.classList.add('hidden');
+  ui.contentPanel.classList.add('hidden');
+  ui.startPanel.classList.add('hidden');
+  ui.adminPanel.classList.remove('hidden');
+
+  if (editingWineId) {
+    openWineForEdit(editingWineId);
+  } else if (wines.length > 0) {
+    openWineForEdit(wines[0].id);
+  } else {
+    resetFormForNewWine();
+  }
+}
+
+function closeAdminPanel() {
+  ui.adminPanel.classList.add('hidden');
+  ui.scanHud.classList.add('hidden');
+  ui.successOverlay.classList.add('hidden');
+  ui.contentPanel.classList.add('hidden');
+  ui.startPanel.classList.remove('hidden');
+  showAdminNotice('');
 }
 
 function attachEvents() {
   ui.startScanButton.addEventListener('click', async () => {
     try {
+      clearStartError();
       resetUiForScan();
       await startAr();
     } catch (error) {
       showError(error.message || 'Проверь доступ к камере и попробуй снова.');
-    }
-  });
-
-  ui.targetEntity.addEventListener('targetFound', onTargetFound);
-  ui.targetEntity.addEventListener('targetLost', () => {
-    if (!scanHandled) {
-      hideOutline();
     }
   });
 
   ui.rescanButton.addEventListener('click', async () => {
     try {
+      clearStartError();
       resetUiForScan();
       await startAr();
     } catch (error) {
       showError(error.message || 'Проверь доступ к камере и попробуй снова.');
+    }
+  });
+
+  ui.openAdminButton.addEventListener('click', async () => {
+    await openAdminPanel();
+  });
+
+  ui.closeAdminButton.addEventListener('click', () => {
+    closeAdminPanel();
+  });
+
+  ui.newWineButton.addEventListener('click', () => {
+    resetFormForNewWine();
+  });
+
+  ui.wineForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+
+    try {
+      const draftWine = collectWineFromForm();
+
+      const hasDuplicateId = wines.some(
+        (wine) => wine.id === draftWine.id && wine.id !== editingWineId
+      );
+      if (hasDuplicateId) {
+        throw new Error('Вино с таким ID уже существует.');
+      }
+
+      upsertWine(draftWine);
+      editingWineId = draftWine.id;
+      saveContentToStorage();
+      createTargetEntities();
+      renderAdminList();
+      openWineForEdit(editingWineId);
+      showAdminNotice('Сохранено.', 'success');
+    } catch (error) {
+      showAdminNotice(error.message || 'Не удалось сохранить карточку.', 'error');
+    }
+  });
+
+  ui.deleteWineButton.addEventListener('click', () => {
+    if (!editingWineId) {
+      showAdminNotice('Сначала выбери вино для удаления.', 'error');
+      return;
+    }
+
+    const prevLength = wines.length;
+    wines = wines.filter((wine) => wine.id !== editingWineId);
+
+    if (wines.length === prevLength) {
+      showAdminNotice('Карточка не найдена.', 'error');
+      return;
+    }
+
+    saveContentToStorage();
+    createTargetEntities();
+
+    if (wines.length > 0) {
+      openWineForEdit(wines[0].id);
+    } else {
+      resetFormForNewWine();
+    }
+
+    renderAdminList();
+    showAdminNotice('Карточка удалена.', 'success');
+  });
+
+  ui.downloadJsonButton.addEventListener('click', () => {
+    downloadJson();
+    showAdminNotice('JSON выгружен.', 'success');
+  });
+
+  ui.resetDataButton.addEventListener('click', async () => {
+    const approved = window.confirm(
+      'Сбросить локальные изменения и загрузить demo-данные?'
+    );
+
+    if (!approved) {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      wines = await loadRemoteContent();
+      editingWineId = wines[0] ? wines[0].id : null;
+      createTargetEntities();
+      renderAdminList();
+
+      if (editingWineId) {
+        openWineForEdit(editingWineId);
+      } else {
+        resetFormForNewWine();
+      }
+
+      showAdminNotice('Данные сброшены к demo-версии.', 'success');
+    } catch (error) {
+      showAdminNotice(error.message || 'Не удалось выполнить сброс.', 'error');
     }
   });
 }
@@ -296,7 +624,16 @@ function attachEvents() {
 async function bootstrap() {
   try {
     ensureCameraLayout();
-    await loadContent();
+    wines = await loadContent();
+    createTargetEntities();
+
+    if (wines.length > 0) {
+      editingWineId = wines[0].id;
+      openWineForEdit(editingWineId);
+    } else {
+      resetFormForNewWine();
+    }
+
     attachEvents();
   } catch (error) {
     showError(error.message || 'Ошибка загрузки данных.');

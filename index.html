@@ -20,89 +20,7 @@
       class="ar-scene hidden"
     >
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-      <a-entity id="targetEntity" mindar-image-target="targetIndex: 0">
-        <a-entity
-          id="labelOutline"
-          visible="false"
-          position="0 0 0.01"
-          animation__pulse="property: scale; from: 1 1 1; to: 1.03 1.03 1; dir: alternate; dur: 360; loop: true; easing: easeInOutSine"
-        >
-          <a-plane
-            id="labelGlowFill"
-            width="1"
-            height="1"
-            material="shader: flat; color: #dcefff; opacity: 0.08; transparent: true; side: double"
-          ></a-plane>
-
-          <a-plane
-            width="1.08"
-            height="0.03"
-            position="0 0.515 -0.001"
-            material="shader: flat; color: #c6e9ff; opacity: 0.22; transparent: true"
-            animation__glowtop="property: material.opacity; from: 0.14; to: 0.3; dir: alternate; dur: 420; loop: true"
-          ></a-plane>
-          <a-plane
-            width="1.08"
-            height="0.03"
-            position="0 -0.515 -0.001"
-            material="shader: flat; color: #c6e9ff; opacity: 0.22; transparent: true"
-            animation__glowbottom="property: material.opacity; from: 0.14; to: 0.3; dir: alternate; dur: 420; loop: true"
-          ></a-plane>
-          <a-plane
-            width="0.03"
-            height="1.08"
-            position="-0.515 0 -0.001"
-            material="shader: flat; color: #c6e9ff; opacity: 0.22; transparent: true"
-            animation__glowleft="property: material.opacity; from: 0.14; to: 0.3; dir: alternate; dur: 420; loop: true"
-          ></a-plane>
-          <a-plane
-            width="0.03"
-            height="1.08"
-            position="0.515 0 -0.001"
-            material="shader: flat; color: #c6e9ff; opacity: 0.22; transparent: true"
-            animation__glowright="property: material.opacity; from: 0.14; to: 0.3; dir: alternate; dur: 420; loop: true"
-          ></a-plane>
-
-          <a-plane
-            width="1.01"
-            height="0.008"
-            position="0 0.5 0"
-            material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
-          ></a-plane>
-          <a-plane
-            width="1.01"
-            height="0.008"
-            position="0 -0.5 0"
-            material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
-          ></a-plane>
-          <a-plane
-            width="0.008"
-            height="1.01"
-            position="-0.5 0 0"
-            material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
-          ></a-plane>
-          <a-plane
-            width="0.008"
-            height="1.01"
-            position="0.5 0 0"
-            material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
-          ></a-plane>
-
-          <a-entity
-            id="labelSweepTrack"
-            position="-1.05 -1.05 0.002"
-            rotation="0 0 -28"
-            animation__sweep="property: position; from: -1.05 -1.05 0.002; to: 1.05 1.05 0.002; dur: 1200; loop: true; easing: linear"
-          >
-            <a-plane
-              width="0.18"
-              height="1.9"
-              material="shader: flat; color: #ffffff; opacity: 0.32; transparent: true"
-              animation__spark="property: material.opacity; from: 0.22; to: 0.38; dir: alternate; dur: 220; loop: true"
-            ></a-plane>
-          </a-entity>
-        </a-entity>
-      </a-entity>
+      <a-entity id="targetsRoot"></a-entity>
     </a-scene>
 
     <main class="overlay-shell">
@@ -113,9 +31,10 @@
           После распознавания ты увидишь интерактивный контент, привязанный к
           конкретному вину.
         </p>
-        <button class="primary-btn" id="startScanButton">
-          Включить камеру
-        </button>
+        <div class="start-actions">
+          <button class="primary-btn" id="startScanButton">Включить камеру</button>
+          <button class="ghost-btn" id="openAdminButton">Открыть админку</button>
+        </div>
       </section>
 
       <section class="scan-hud hidden" id="scanHud">
@@ -128,7 +47,11 @@
       </section>
 
       <section class="panel content-panel hidden" id="contentPanel">
-        <p class="eyebrow reveal-item" style="--reveal-order: 0" id="wineSubtitle"></p>
+        <p
+          class="eyebrow reveal-item"
+          style="--reveal-order: 0"
+          id="wineSubtitle"
+        ></p>
         <h2 class="reveal-item" style="--reveal-order: 1" id="wineTitle"></h2>
         <p class="reveal-item" style="--reveal-order: 2" id="wineStory"></p>
         <p class="meta reveal-item" style="--reveal-order: 3" id="wineServing"></p>
@@ -140,9 +63,99 @@
           <p class="section-title">Visual Story</p>
           <div class="gallery" id="gallery"></div>
         </section>
-        <button class="ghost-btn reveal-item" style="--reveal-order: 6" id="rescanButton">
+        <button
+          class="ghost-btn reveal-item"
+          style="--reveal-order: 6"
+          id="rescanButton"
+        >
           Сканировать снова
         </button>
+      </section>
+
+      <section class="panel admin-panel hidden" id="adminPanel">
+        <div class="admin-header">
+          <div>
+            <p class="eyebrow">Admin</p>
+            <h2>Управление винами</h2>
+            <p class="lead">
+              Добавляй карточки вин, редактируй контент и выгружай JSON для
+              продакшн-данных.
+            </p>
+          </div>
+          <button class="ghost-btn small-btn" id="closeAdminButton">
+            К сканеру
+          </button>
+        </div>
+
+        <div class="admin-layout">
+          <aside class="admin-list-wrap">
+            <div class="admin-list-actions">
+              <button class="primary-btn small-btn" id="newWineButton">
+                + Новое вино
+              </button>
+            </div>
+            <div class="admin-list" id="wineAdminList"></div>
+          </aside>
+
+          <form class="admin-form" id="wineForm">
+            <div class="admin-grid">
+              <label class="field">
+                <span>ID вина</span>
+                <input type="text" id="wineIdInput" placeholder="wine-barolo-001" required />
+              </label>
+
+              <label class="field">
+                <span>Target Index</span>
+                <input type="number" id="wineTargetInput" min="0" step="1" required />
+              </label>
+
+              <label class="field field-wide">
+                <span>Заголовок</span>
+                <input type="text" id="wineTitleInput" placeholder="Barolo Riserva 2018" required />
+              </label>
+
+              <label class="field field-wide">
+                <span>Подзаголовок</span>
+                <input type="text" id="wineSubtitleInput" placeholder="Piemonte, Italy" required />
+              </label>
+
+              <label class="field field-wide">
+                <span>История</span>
+                <textarea id="wineStoryInput" rows="4" required></textarea>
+              </label>
+
+              <label class="field field-wide">
+                <span>Подача</span>
+                <textarea id="wineServingInput" rows="3" required></textarea>
+              </label>
+
+              <label class="field field-wide">
+                <span>Pairings (через запятую или с новой строки)</span>
+                <textarea id="winePairingsInput" rows="3"></textarea>
+              </label>
+
+              <label class="field field-wide">
+                <span>Gallery URLs (по одной ссылке в строке)</span>
+                <textarea id="wineGalleryInput" rows="4"></textarea>
+              </label>
+            </div>
+
+            <p class="admin-notice" id="adminNotice"></p>
+
+            <div class="admin-actions">
+              <button class="primary-btn" type="submit">Сохранить</button>
+              <button class="ghost-btn" type="button" id="deleteWineButton">
+                Удалить
+              </button>
+              <button class="ghost-btn" type="button" id="downloadJsonButton">
+                Скачать JSON
+              </button>
+              <button class="ghost-btn" type="button" id="resetDataButton">
+                Сбросить к demo
+              </button>
+            </div>
+          </form>
+        </div>
       </section>
     </main>
   </body>
