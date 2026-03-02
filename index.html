@@ -20,7 +20,33 @@
       class="ar-scene hidden"
     >
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-      <a-entity id="targetEntity" mindar-image-target="targetIndex: 0"></a-entity>
+      <a-entity id="targetEntity" mindar-image-target="targetIndex: 0">
+        <a-entity
+          id="labelOutline"
+          visible="false"
+          position="0 0 0.01"
+          animation__pulse="property: scale; from: 1 1 1; to: 1.03 1.03 1; dir: alternate; dur: 360; loop: true; easing: easeInOutSine"
+        >
+          <a-plane
+            id="labelOutlineFill"
+            width="1"
+            height="1"
+            material="shader: flat; color: #ffffff; opacity: 0.08; transparent: true"
+          ></a-plane>
+          <a-entity
+            line="start: -0.5 0.5 0; end: 0.5 0.5 0; color: #ffffff; opacity: 0.96"
+          ></a-entity>
+          <a-entity
+            line="start: 0.5 0.5 0; end: 0.5 -0.5 0; color: #ffffff; opacity: 0.96"
+          ></a-entity>
+          <a-entity
+            line="start: 0.5 -0.5 0; end: -0.5 -0.5 0; color: #ffffff; opacity: 0.96"
+          ></a-entity>
+          <a-entity
+            line="start: -0.5 -0.5 0; end: -0.5 0.5 0; color: #ffffff; opacity: 0.96"
+          ></a-entity>
+        </a-entity>
+      </a-entity>
     </a-scene>
 
     <main class="overlay-shell">

@@ -6,6 +6,7 @@ const TARGET_TO_WINE = {
 const ui = {
   arScene: document.getElementById('arScene'),
   targetEntity: document.getElementById('targetEntity'),
+  labelOutline: document.getElementById('labelOutline'),
   startPanel: document.getElementById('startPanel'),
   startScanButton: document.getElementById('startScanButton'),
   scanHud: document.getElementById('scanHud'),
@@ -24,6 +25,9 @@ let wines = [];
 let scanHandled = false;
 let arStarted = false;
 let viewportSyncBound = false;
+const DEFAULT_OUTLINE = { width: 1, height: 0.75 };
+const OUTLINE_MS = 700;
+const SUCCESS_MS = 1300;
 
 function syncViewportHeight() {
   document.documentElement.style.setProperty(
@@ -96,6 +100,28 @@ function getMindArSystem() {
   return ui.arScene.systems['mindar-image-system'];
 }
 
+function applyOutlineSize(outline) {
+  const width =
+    Number.isFinite(outline?.width) && outline.width > 0
+      ? outline.width
+      : DEFAULT_OUTLINE.width;
+  const height =
+    Number.isFinite(outline?.height) && outline.height > 0
+      ? outline.height
+      : DEFAULT_OUTLINE.height;
+
+  ui.labelOutline.setAttribute('scale', `${width} ${height} 1`);
+}
+
+function showOutline(outline) {
+  applyOutlineSize(outline);
+  ui.labelOutline.setAttribute('visible', true);
+}
+
+function hideOutline() {
+  ui.labelOutline.setAttribute('visible', false);
+}
+
 async function startAr() {
   await waitForSceneLoaded();
   ui.arScene.classList.remove('hidden');
@@ -119,12 +145,14 @@ async function stopAr() {
     await system.stop();
     arStarted = false;
   }
+  hideOutline();
   document.body.classList.remove('is-scanning');
   ui.arScene.classList.add('hidden');
 }
 
 function resetUiForScan() {
   scanHandled = false;
+  hideOutline();
   document.body.classList.add('is-scanning');
   ui.startPanel.classList.add('hidden');
   ui.contentPanel.classList.add('hidden');
@@ -188,16 +216,20 @@ async function onTargetFound() {
     return;
   }
 
-  ui.scanHud.classList.add('hidden');
-  ui.successOverlay.classList.remove('hidden');
-
+  showOutline(wine.outline);
   renderContent(wine);
 
+  window.setTimeout(() => {
+    ui.scanHud.classList.add('hidden');
+    ui.successOverlay.classList.remove('hidden');
+  }, OUTLINE_MS);
+
   window.setTimeout(async () => {
+    hideOutline();
     ui.successOverlay.classList.add('hidden');
     ui.contentPanel.classList.remove('hidden');
     await stopAr();
-  }, 1300);
+  }, OUTLINE_MS + SUCCESS_MS);
 }
 
 function attachEvents() {
@@ -211,6 +243,11 @@ function attachEvents() {
   });
 
   ui.targetEntity.addEventListener('targetFound', onTargetFound);
+  ui.targetEntity.addEventListener('targetLost', () => {
+    if (!scanHandled) {
+      hideOutline();
+    }
+  });
 
   ui.rescanButton.addEventListener('click', async () => {
     try {
