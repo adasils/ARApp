@@ -21,6 +21,7 @@ function normalizeArray(value) {
 
 function normalizeWine(wine, fallbackIndex) {
   const targetIndex = Number.parseInt(wine?.targetIndex, 10);
+  const rating = Number.parseFloat(wine?.rating);
   return {
     id: normalizeString(wine?.id) || `wine-${fallbackIndex + 1}`,
     targetIndex: Number.isInteger(targetIndex) && targetIndex >= 0
@@ -30,6 +31,7 @@ function normalizeWine(wine, fallbackIndex) {
     subtitle: normalizeString(wine?.subtitle),
     story: normalizeString(wine?.story),
     serving: normalizeString(wine?.serving),
+    rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0,
     pairings: normalizeArray(wine?.pairings),
     gallery: normalizeArray(wine?.gallery),
   };
@@ -61,6 +63,7 @@ function getFormFromWine(wine) {
     subtitle: wine?.subtitle || '',
     story: wine?.story || '',
     serving: wine?.serving || '',
+    rating: wine ? String(wine.rating ?? 0) : '0',
     pairings: wine?.pairings?.join('\n') || '',
     gallery: wine?.gallery?.join('\n') || '',
   };
@@ -74,6 +77,7 @@ function createEmptyForm(nextIndex = 0) {
     subtitle: '',
     story: '',
     serving: '',
+    rating: '0',
     pairings: '',
     gallery: '',
   };
@@ -90,6 +94,7 @@ export default function App() {
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
   const [selectedWineId, setSelectedWineId] = useState(null);
+  const [adminView, setAdminView] = useState('list');
   const [form, setForm] = useState(createEmptyForm(0));
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
@@ -111,6 +116,10 @@ export default function App() {
     }
     return wines.reduce((max, wine) => Math.max(max, wine.targetIndex), 0) + 1;
   }, [wines]);
+
+  const selectedWine = useMemo(() => {
+    return wines.find((wine) => wine.id === selectedWineId) || null;
+  }, [wines, selectedWineId]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -360,6 +369,7 @@ export default function App() {
   function openAdmin() {
     stopAr();
     setMode('admin');
+    setAdminView('list');
     setScanFeedbackPhase('idle');
     clearFeedbackTimers();
     scanHandledRef.current = false;
@@ -386,14 +396,28 @@ export default function App() {
 
   function handleSelectWine(wine) {
     setSelectedWineId(wine.id);
-    setForm(getFormFromWine(wine));
+    setAdminView('detail');
     setNotice({ text: '', type: '' });
   }
 
   function handleNewWine() {
     setSelectedWineId(null);
     setForm(createEmptyForm(nextTargetIndex));
-    setNotice({ text: 'Новая карточка: заполни поля и нажми «Сохранить».', type: '' });
+    setAdminView('create');
+    setNotice({ text: '', type: '' });
+  }
+
+  function handleEditSelectedWine() {
+    if (!selectedWine) {
+      return;
+    }
+    setForm(getFormFromWine(selectedWine));
+    setAdminView('edit');
+  }
+
+  function handleBackToAdminList() {
+    setAdminView('list');
+    setNotice({ text: '', type: '' });
   }
 
   function handleFormChange(event) {
@@ -408,6 +432,7 @@ export default function App() {
     const subtitle = normalizeString(form.subtitle);
     const story = normalizeString(form.story);
     const serving = normalizeString(form.serving);
+    const rating = Number.parseFloat(form.rating);
 
     if (!id) {
       throw new Error('Укажи уникальный ID вина.');
@@ -421,6 +446,10 @@ export default function App() {
       throw new Error('Заполни заголовок, подзаголовок, историю и подачу.');
     }
 
+    if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
+      throw new Error('Рейтинг должен быть числом от 0 до 5.');
+    }
+
     return {
       id,
       targetIndex,
@@ -428,6 +457,7 @@ export default function App() {
       subtitle,
       story,
       serving,
+      rating: Number(rating.toFixed(1)),
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
@@ -463,6 +493,7 @@ export default function App() {
       setWines(nextWines);
       setSelectedWineId(wine.id);
       setForm(getFormFromWine(wine));
+      setAdminView('detail');
       setNotice({ text: 'Сохранено.', type: 'success' });
       saveToStorage(nextWines);
     } catch (error) {
@@ -483,6 +514,7 @@ export default function App() {
     if (!nextWines.length) {
       setSelectedWineId(null);
       setForm(createEmptyForm(0));
+      setAdminView('list');
       setNotice({ text: 'Карточка удалена. Добавь новое вино.', type: 'success' });
       return;
     }
@@ -490,6 +522,7 @@ export default function App() {
     const first = [...nextWines].sort((a, b) => a.targetIndex - b.targetIndex)[0];
     setSelectedWineId(first.id);
     setForm(getFormFromWine(first));
+    setAdminView('list');
     setNotice({ text: 'Карточка удалена.', type: 'success' });
   }
 
@@ -665,39 +698,73 @@ export default function App() {
             <div className="admin-header">
               <div>
                 <p className="eyebrow">Content Manager</p>
-                <h2>Панель управления винами</h2>
+                <h2>
+                  {adminView === 'list' && 'Список вин'}
+                  {adminView === 'detail' && 'Карточка вина'}
+                  {adminView === 'edit' && 'Редактирование вина'}
+                  {adminView === 'create' && 'Добавить новое вино'}
+                </h2>
                 <p className="lead">
-                  Добавляй новые карточки, редактируй тексты и изображения, выгружай актуальный JSON.
+                  Управляй карточками вин, рейтингами и контентом для AR.
                 </p>
               </div>
               <button className="ghost-btn" onClick={closeAdmin}>
                 К сканеру
               </button>
             </div>
+            {adminView === 'list' && (
+              <div className="admin-overview">
+                <div className="admin-actions-row">
+                  <button className="primary-btn" onClick={handleNewWine}>
+                    Добавить новое вино
+                  </button>
+                  <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
+                    Скачать JSON
+                  </button>
+                  <button className="ghost-btn" type="button" onClick={handleResetDemo}>
+                    Сбросить к demo
+                  </button>
+                </div>
 
-            <div className="admin-layout">
-              <aside className="admin-sidebar">
-                <button className="primary-btn sidebar-btn" onClick={handleNewWine}>
-                  + Новое вино
-                </button>
-
-                <div className="wine-list">
+                <div className="wine-grid">
                   {!sortedWines.length && <div className="empty-item">Пока нет вин. Добавь первое.</div>}
-
                   {sortedWines.map((wine) => (
-                    <button
-                      key={wine.id}
-                      className={`wine-item ${selectedWineId === wine.id ? 'is-active' : ''}`}
-                      onClick={() => handleSelectWine(wine)}
-                    >
+                    <button key={wine.id} className="wine-card" onClick={() => handleSelectWine(wine)}>
                       <div className="wine-item-title">{wine.title || wine.id}</div>
                       <div className="wine-item-subtitle">{wine.subtitle || 'Без подзаголовка'}</div>
-                      <div className="wine-item-meta">targetIndex: {wine.targetIndex}</div>
+                      <div className="wine-item-meta">Рейтинг: {wine.rating.toFixed(1)} / 5</div>
                     </button>
                   ))}
                 </div>
-              </aside>
+              </div>
+            )}
 
+            {adminView === 'detail' && selectedWine && (
+              <div className="admin-detail">
+                <div className="detail-grid">
+                  <p><strong>Название:</strong> {selectedWine.title}</p>
+                  <p><strong>Регион:</strong> {selectedWine.subtitle}</p>
+                  <p><strong>Рейтинг:</strong> {selectedWine.rating.toFixed(1)} / 5</p>
+                  <p><strong>Target Index:</strong> {selectedWine.targetIndex}</p>
+                  <p><strong>ID:</strong> {selectedWine.id}</p>
+                  <p><strong>Подача:</strong> {selectedWine.serving}</p>
+                  <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
+                  <p className="detail-wide"><strong>Pairings:</strong> {selectedWine.pairings.join(', ') || '—'}</p>
+                  <p className="detail-wide"><strong>Gallery:</strong> {selectedWine.gallery.length} изображений</p>
+                </div>
+
+                <div className="actions-row">
+                  <button className="primary-btn" onClick={handleEditSelectedWine}>
+                    Редактировать
+                  </button>
+                  <button className="ghost-btn" onClick={handleBackToAdminList}>
+                    Назад к списку
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(adminView === 'edit' || adminView === 'create') && (
               <form className="admin-form" onSubmit={handleSaveWine}>
                 <div className="form-grid">
                   <label className="field">
@@ -713,6 +780,20 @@ export default function App() {
                       min="0"
                       step="1"
                       value={form.targetIndex}
+                      onChange={handleFormChange}
+                      required
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Рейтинг (0-5)</span>
+                    <input
+                      name="rating"
+                      type="number"
+                      min="0"
+                      max="5"
+                      step="0.1"
+                      value={form.rating}
                       onChange={handleFormChange}
                       required
                     />
@@ -755,18 +836,17 @@ export default function App() {
                   <button className="primary-btn" type="submit">
                     Сохранить
                   </button>
-                  <button className="ghost-btn" type="button" onClick={handleDeleteWine}>
-                    Удалить
-                  </button>
-                  <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
-                    Скачать JSON
-                  </button>
-                  <button className="ghost-btn" type="button" onClick={handleResetDemo}>
-                    Сбросить к demo
+                  {adminView === 'edit' && (
+                    <button className="ghost-btn" type="button" onClick={handleDeleteWine}>
+                      Удалить
+                    </button>
+                  )}
+                  <button className="ghost-btn" type="button" onClick={handleBackToAdminList}>
+                    Назад к списку
                   </button>
                 </div>
               </form>
-            </div>
+            )}
           </section>
         )}
       </main>

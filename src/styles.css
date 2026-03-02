@@ -495,6 +495,66 @@ h2 {
   min-height: 0;
 }
 
+.admin-overview {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wine-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.wine-card {
+  width: 100%;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid rgba(182, 211, 255, 0.26);
+  background: linear-gradient(145deg, rgba(200, 224, 255, 0.14), rgba(17, 28, 47, 0.52));
+  color: var(--text-strong);
+  padding: 12px;
+  cursor: pointer;
+}
+
+.wine-card:hover {
+  border-color: rgba(145, 214, 255, 0.58);
+}
+
+.admin-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border: 1px solid rgba(182, 211, 255, 0.26);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(200, 224, 255, 0.14), rgba(17, 28, 47, 0.52));
+  padding: 14px;
+}
+
+.detail-grid p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.detail-grid strong {
+  color: var(--text-strong);
+}
+
+.detail-wide {
+  grid-column: 1 / -1;
+}
+
 .admin-sidebar {
   display: grid;
   gap: 10px;
@@ -667,6 +727,10 @@ h2 {
 
   .gallery {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 
