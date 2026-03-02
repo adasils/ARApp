@@ -528,26 +528,6 @@ export default function App() {
       </a-scene>
 
       <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''}`}>
-        {mode !== 'scan' && (
-        <header className="topbar">
-          <p className="topbar-brand">Wine Label AR</p>
-          <nav className="topbar-nav">
-            <button
-              className={`topbar-tab ${mode === 'home' || mode === 'scan' || mode === 'content' ? 'is-active' : ''}`}
-              onClick={() => setMode('home')}
-            >
-              Сканер
-            </button>
-            <button
-              className={`topbar-tab ${mode === 'admin' ? 'is-active' : ''}`}
-              onClick={openAdmin}
-            >
-              Админка
-            </button>
-          </nav>
-        </header>
-        )}
-
         {(mode === 'home' || mode === 'scan' || mode === 'content') && (
           <section className={mode === 'scan' ? 'scanner-panel scan-panel-hud' : 'panel scanner-panel'}>
             {mode === 'home' && (
@@ -624,6 +604,15 @@ export default function App() {
               </div>
             )}
           </section>
+        )}
+
+        {(mode === 'home' || mode === 'content') && (
+          <footer className="entry-footer">
+            <button className="admin-link" onClick={openAdmin}>
+              Перейти в админку
+            </button>
+            <p className="copyright">VineLabs 2026</p>
+          </footer>
         )}
 
         {mode === 'admin' && (

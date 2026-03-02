@@ -30,6 +30,7 @@ body,
 body {
   font-family: 'Avenir Next', 'Segoe UI', sans-serif;
   color: var(--text);
+  overflow-y: auto;
   background:
     radial-gradient(circle at 100% 0%, rgba(187, 75, 58, 0.12), transparent 42%),
     radial-gradient(circle at 0% 100%, rgba(143, 47, 37, 0.1), transparent 36%),
@@ -77,55 +78,13 @@ div.mindar-ui-overlay {
   min-height: var(--app-height);
   padding: 20px;
   display: grid;
-  gap: 18px;
+  gap: 14px;
+  align-content: start;
 }
 
 .app-shell.is-scan {
   padding: 0;
   gap: 0;
-}
-
-.topbar {
-  width: min(1200px, 100%);
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 1px solid var(--line);
-  background: rgba(255, 250, 244, 0.8);
-  backdrop-filter: blur(8px);
-  border-radius: 16px;
-  padding: 10px 12px;
-}
-
-.topbar-brand {
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 0.78rem;
-  color: var(--accent);
-}
-
-.topbar-nav {
-  display: flex;
-  gap: 8px;
-}
-
-.topbar-tab {
-  border: 1px solid var(--line);
-  background: var(--panel-strong);
-  border-radius: 10px;
-  padding: 8px 14px;
-  color: var(--text);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.topbar-tab.is-active {
-  border-color: rgba(143, 47, 37, 0.45);
-  background: var(--accent-soft);
-  color: var(--accent);
 }
 
 .panel {
@@ -139,7 +98,7 @@ div.mindar-ui-overlay {
 }
 
 .scanner-panel {
-  min-height: 560px;
+  min-height: clamp(520px, 74vh, 760px);
   display: grid;
   align-content: center;
   padding: clamp(20px, 4vw, 40px);
@@ -243,6 +202,34 @@ h2 {
   top: 16px;
   right: 16px;
   pointer-events: auto;
+}
+
+.entry-footer {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  text-align: center;
+  display: grid;
+  gap: 6px;
+  padding-bottom: 8px;
+}
+
+.admin-link {
+  border: 0;
+  background: transparent;
+  color: #6d4a3b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 0.92rem;
+  cursor: pointer;
+}
+
+.admin-link:hover {
+  color: var(--accent);
+}
+
+.copyright {
+  font-size: 0.78rem;
+  color: #8d7768;
 }
 
 .scan-pill {
@@ -490,21 +477,6 @@ h2 {
 @media (max-width: 640px) {
   .app-shell {
     padding: 12px;
-  }
-
-  .topbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .topbar-nav {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .topbar-tab {
-    width: 100%;
   }
 
   .scanner-panel,
