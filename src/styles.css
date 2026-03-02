@@ -185,20 +185,23 @@ div.mindar-ui-overlay {
 .home-pattern {
   position: absolute;
   inset: -28%;
+  z-index: 1;
   pointer-events: none;
-  opacity: 0.11;
+  opacity: 0.24;
   background-image: var(--wine-pattern-image);
   background-repeat: repeat;
-  background-size: 84px 84px;
+  background-size: 112px 112px;
   transform: rotate(-21deg) scale(1.28);
   transform-origin: center;
   animation: wine-pattern-drift 36s linear infinite;
-  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
+  mix-blend-mode: screen;
+  filter: invert(1) brightness(1.55) contrast(1.1) drop-shadow(0 0 6px rgba(186, 217, 255, 0.45));
 }
 
 .home-center {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
   padding: clamp(14px, 3vw, 28px);
@@ -341,7 +344,7 @@ h2 {
   left: 0;
   right: 0;
   bottom: 16px;
-  z-index: 2;
+  z-index: 3;
 }
 
 .admin-link {
