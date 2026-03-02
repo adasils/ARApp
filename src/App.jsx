@@ -530,12 +530,13 @@ export default function App() {
 
       <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''}`}>
         {mode === 'home' && (
-          <section
-            className="home-screen"
-            style={{ '--wine-pattern-image': `url(${WINE_PATTERN_IMAGE})` }}
-          >
+          <section className="home-screen">
             <div className="home-abstract" aria-hidden="true"></div>
-            <div className="home-pattern" aria-hidden="true"></div>
+            <div
+              className="home-pattern"
+              aria-hidden="true"
+              style={{ backgroundImage: `url(${WINE_PATTERN_IMAGE})` }}
+            ></div>
             <div className="home-center">
               <div className="home-card">
                 <p className="eyebrow">AR Scanning</p>

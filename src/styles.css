@@ -188,7 +188,6 @@ div.mindar-ui-overlay {
   z-index: 1;
   pointer-events: none;
   opacity: 0.24;
-  background-image: var(--wine-pattern-image);
   background-repeat: repeat;
   background-size: 112px 112px;
   transform: rotate(-21deg) scale(1.28);
