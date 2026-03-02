@@ -187,14 +187,14 @@ div.mindar-ui-overlay {
   inset: -28%;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.24;
+  opacity: 0.14;
   background-repeat: repeat;
   background-size: 112px 112px;
   transform: rotate(-21deg) scale(1.28);
   transform-origin: center;
   animation: wine-pattern-drift 36s linear infinite;
   mix-blend-mode: screen;
-  filter: invert(1) brightness(1.55) contrast(1.1) drop-shadow(0 0 6px rgba(186, 217, 255, 0.45));
+  filter: invert(1) brightness(1.4) contrast(1.05) drop-shadow(0 0 4px rgba(186, 217, 255, 0.3));
 }
 
 .home-center {
