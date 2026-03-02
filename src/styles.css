@@ -403,6 +403,33 @@ h2 {
   animation: pop 360ms ease;
 }
 
+.scan-feedback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.scan-loader {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  border: 5px solid rgba(195, 226, 255, 0.24);
+  border-top-color: rgba(205, 239, 255, 0.95);
+  box-shadow: 0 0 26px rgba(129, 184, 255, 0.45);
+  animation: scan-loader-spin 820ms linear infinite;
+}
+
+.scan-burst {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 5px solid rgba(198, 233, 255, 0.9);
+  box-shadow: 0 0 32px rgba(174, 214, 255, 0.66);
+  animation: scan-burst-pop 280ms ease-out forwards;
+}
+
 .meta {
   color: #d4e5ff;
   font-weight: 500;
@@ -594,6 +621,28 @@ h2 {
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes scan-loader-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes scan-burst-pop {
+  0% {
+    transform: scale(0.35);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(4.6);
+    opacity: 0;
   }
 }
 

@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
-const SUCCESS_MS = 1300;
+const LOADER_MS = 850;
+const BURST_MS = 280;
+const DONE_MS = 900;
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -83,13 +85,14 @@ export default function App() {
   const arStartedRef = useRef(false);
   const scanHandledRef = useRef(false);
   const modeRef = useRef('home');
+  const feedbackTimersRef = useRef([]);
 
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [form, setForm] = useState(createEmptyForm(0));
   const [contentWine, setContentWine] = useState(null);
-  const [isSuccessShown, setIsSuccessShown] = useState(false);
+  const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
   const [notice, setNotice] = useState({ text: '', type: '' });
   const [startError, setStartError] = useState('');
 
@@ -219,9 +222,17 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      clearFeedbackTimers();
       stopAr();
     };
   }, []);
+
+  function clearFeedbackTimers() {
+    feedbackTimersRef.current.forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    feedbackTimersRef.current = [];
+  }
 
   function applyCameraStyles() {
     const video = document.querySelector('video.mindar-video');
@@ -295,7 +306,8 @@ export default function App() {
       setStartError('');
       setNotice({ text: '', type: '' });
       setMode('scan');
-      setIsSuccessShown(false);
+      setScanFeedbackPhase('idle');
+      clearFeedbackTimers();
       scanHandledRef.current = false;
       document.body.classList.add('is-scanning');
       await startAr();
@@ -308,7 +320,8 @@ export default function App() {
   async function handleStopScan() {
     await stopAr();
     setMode('home');
-    setIsSuccessShown(false);
+    setScanFeedbackPhase('idle');
+    clearFeedbackTimers();
     scanHandledRef.current = false;
   }
 
@@ -323,20 +336,32 @@ export default function App() {
     }
 
     scanHandledRef.current = true;
-    setIsSuccessShown(true);
+    clearFeedbackTimers();
+    setScanFeedbackPhase('loading');
 
-    window.setTimeout(async () => {
-      setIsSuccessShown(false);
+    const burstTimer = window.setTimeout(() => {
+      setScanFeedbackPhase('burst');
+    }, LOADER_MS);
+
+    const doneTimer = window.setTimeout(() => {
+      setScanFeedbackPhase('done');
+    }, LOADER_MS + BURST_MS);
+
+    const completeTimer = window.setTimeout(async () => {
+      setScanFeedbackPhase('idle');
       setContentWine(wine);
       setMode('content');
       await stopAr();
-    }, SUCCESS_MS);
+    }, LOADER_MS + BURST_MS + DONE_MS);
+
+    feedbackTimersRef.current = [burstTimer, doneTimer, completeTimer];
   }
 
   function openAdmin() {
     stopAr();
     setMode('admin');
-    setIsSuccessShown(false);
+    setScanFeedbackPhase('idle');
+    clearFeedbackTimers();
     scanHandledRef.current = false;
     document.body.classList.remove('is-scanning');
 
@@ -572,9 +597,15 @@ export default function App() {
               </div>
               <p className="scan-pill">Наведи камеру на этикетку</p>
               <div className="scanner-frame" aria-hidden="true"></div>
-              {isSuccessShown && (
-                <div className="success-overlay">
-                  <p>Well done!</p>
+              {scanFeedbackPhase !== 'idle' && (
+                <div className={`scan-feedback is-${scanFeedbackPhase}`}>
+                  {scanFeedbackPhase === 'loading' && <div className="scan-loader" />}
+                  {scanFeedbackPhase === 'burst' && <div className="scan-burst" />}
+                  {scanFeedbackPhase === 'done' && (
+                    <div className="success-overlay">
+                      <p>Well done!</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
