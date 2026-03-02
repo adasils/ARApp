@@ -873,6 +873,15 @@ export default function App() {
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
         className={`ar-scene ${mode === 'scan' ? '' : 'hidden'}`}
+        style={{
+          display: mode === 'scan' ? 'block' : 'none',
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: 'var(--app-height)',
+          zIndex: 1,
+          pointerEvents: mode === 'scan' ? 'auto' : 'none',
+        }}
       >
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity ref={targetsRootRef}></a-entity>
