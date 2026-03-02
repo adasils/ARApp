@@ -197,15 +197,18 @@ async function sha256Hex(input) {
   return digestArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function getNextTargetIndex(wines, labelIndexMap) {
-  const wineMax = wines.length
-    ? wines.reduce((max, wine) => Math.max(max, Number.parseInt(wine.targetIndex, 10) || 0), 0)
-    : -1;
-  const labelIndexes = Object.values(labelIndexMap || {})
-    .map((value) => Number.parseInt(value, 10))
-    .filter((value) => Number.isInteger(value) && value >= 0);
-  const labelMax = labelIndexes.length ? Math.max(...labelIndexes) : -1;
-  return Math.max(wineMax, labelMax) + 1;
+function getNextTargetIndex(labelIndexMap) {
+  const used = new Set(
+    Object.values(labelIndexMap || {})
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value >= 0)
+  );
+
+  let next = 0;
+  while (used.has(next)) {
+    next += 1;
+  }
+  return next;
 }
 
 export default {
@@ -294,14 +297,14 @@ export default {
           return json({ job: existingJob }, 200);
         }
 
-        const wines = await getWines(env);
         const labelIndexMap = await getLabelIndex(env);
-        const requestedTargetIndex = Number.parseInt(payload?.targetIndex, 10);
-        const nextTargetIndex = getNextTargetIndex(wines, labelIndexMap);
-
-        const targetIndex = Number.isInteger(requestedTargetIndex) && requestedTargetIndex >= 0
-          ? requestedTargetIndex
-          : nextTargetIndex;
+        const indexedTarget = Number.parseInt(labelIndexMap[labelHash], 10);
+        const recordTarget = Number.parseInt(existingRecord?.targetIndex, 10);
+        const targetIndex = Number.isInteger(indexedTarget) && indexedTarget >= 0
+          ? indexedTarget
+          : Number.isInteger(recordTarget) && recordTarget >= 0
+            ? recordTarget
+            : getNextTargetIndex(labelIndexMap);
 
         const job = {
           id: crypto.randomUUID(),

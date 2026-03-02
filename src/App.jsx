@@ -8,6 +8,8 @@ const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-j
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
+const LABEL_MAX_SIDE = 1400;
+const LABEL_JPEG_QUALITY = 0.82;
 
 function isApiEnabled() {
   return Boolean(API_BASE_URL);
@@ -99,6 +101,74 @@ function parseGallery(value) {
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function estimateBase64Bytes(dataUrl) {
+  const base64 = String(dataUrl || '').split(',')[1] || '';
+  return Math.round((base64.length * 3) / 4);
+}
+
+function formatKb(bytes) {
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Не удалось загрузить изображение.'));
+    image.src = dataUrl;
+  });
+}
+
+async function optimizeLabelImage(file) {
+  const sourceDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(sourceDataUrl);
+  const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
+  const ratio = maxSide > LABEL_MAX_SIDE ? LABEL_MAX_SIDE / maxSide : 1;
+  const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+
+  if (ratio === 1 && /^data:image\/jpeg;base64,/i.test(sourceDataUrl)) {
+    const bytes = estimateBase64Bytes(sourceDataUrl);
+    return {
+      dataUrl: sourceDataUrl,
+      sourceBytes: bytes,
+      optimizedBytes: bytes,
+      reduced: false,
+    };
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) {
+    throw new Error('Не удалось подготовить изображение.');
+  }
+
+  context.drawImage(image, 0, 0, width, height);
+  const optimizedDataUrl = canvas.toDataURL('image/jpeg', LABEL_JPEG_QUALITY);
+
+  const sourceBytes = estimateBase64Bytes(sourceDataUrl);
+  const optimizedBytes = estimateBase64Bytes(optimizedDataUrl);
+  const reduced = optimizedBytes < sourceBytes;
+
+  return {
+    dataUrl: reduced ? optimizedDataUrl : sourceDataUrl,
+    sourceBytes,
+    optimizedBytes: reduced ? optimizedBytes : sourceBytes,
+    reduced,
+  };
 }
 
 function getFormFromWine(wine) {
@@ -264,7 +334,7 @@ export default function App() {
             return;
           }
           setCompiledTargetsReady(hasCompiledTargets);
-          setMindTargetSrc(hasCompiledTargets ? `${API_BASE_URL}/targets/mind` : DEMO_MIND_TARGET_SRC);
+          setMindTargetSrc(`${API_BASE_URL}/targets/mind`);
           setWines(loaded);
           if (loaded[0]) {
             setSelectedWineId(loaded[0].id);
@@ -455,12 +525,12 @@ export default function App() {
         const manifest = await fetchTargetsManifest();
         const hasCompiledTargets = Boolean(manifest?.ready);
         setCompiledTargetsReady(hasCompiledTargets);
-        if (hasCompiledTargets) {
-          const cacheSuffix = manifest?.compiledAt ? `?v=${manifest.compiledAt}` : `?ts=${Date.now()}`;
-          setMindTargetSrc(`${API_BASE_URL}/targets/mind${cacheSuffix}`);
-        } else {
-          setMindTargetSrc(DEMO_MIND_TARGET_SRC);
+        if (!hasCompiledTargets) {
+          setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
+          return;
         }
+        const cacheSuffix = manifest?.compiledAt ? `?v=${manifest.compiledAt}` : `?ts=${Date.now()}`;
+        setMindTargetSrc(`${API_BASE_URL}/targets/mind${cacheSuffix}`);
       }
 
       setMode('scan');
@@ -607,28 +677,29 @@ export default function App() {
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  function handleLabelImageUpload(event) {
+  async function handleLabelImageUpload(event) {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      setForm((prev) => ({ ...prev, labelImage: result }));
+    try {
+      const optimized = await optimizeLabelImage(file);
+      setForm((prev) => ({ ...prev, labelImage: optimized.dataUrl }));
       setLabelProcess({
         jobId: null,
         status: 'idle',
         targetIndex: null,
         error: '',
       });
-      setNotice({ text: 'Фото этикетки добавлено.', type: 'success' });
-    };
-    reader.onerror = () => {
-      setNotice({ text: 'Не удалось прочитать файл этикетки.', type: 'error' });
-    };
-    reader.readAsDataURL(file);
+      setNotice({
+        text: optimized.reduced
+          ? `Фото оптимизировано: ${formatKb(optimized.sourceBytes)} → ${formatKb(optimized.optimizedBytes)}.`
+          : 'Фото этикетки добавлено.',
+        type: 'success',
+      });
+    } catch (error) {
+      setNotice({ text: error.message || 'Не удалось подготовить файл этикетки.', type: 'error' });
+    }
   }
 
   function handleClearLabelImage() {
@@ -712,7 +783,6 @@ export default function App() {
         body: JSON.stringify({
           wineId: selectedWineId,
           labelImage: form.labelImage,
-          targetIndex: Number.parseInt(form.targetIndex, 10),
         }),
       });
 
