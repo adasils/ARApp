@@ -31,7 +31,18 @@ p {
   position: fixed !important;
   inset: 0;
   z-index: 1;
-  background: #000;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: transparent !important;
+}
+
+.ar-scene video,
+.ar-scene canvas {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  object-fit: cover !important;
 }
 
 .overlay-shell {
