@@ -119,11 +119,13 @@ async function stopAr() {
     await system.stop();
     arStarted = false;
   }
+  document.body.classList.remove('is-scanning');
   ui.arScene.classList.add('hidden');
 }
 
 function resetUiForScan() {
   scanHandled = false;
+  document.body.classList.add('is-scanning');
   ui.startPanel.classList.add('hidden');
   ui.contentPanel.classList.add('hidden');
   ui.successOverlay.classList.add('hidden');
@@ -131,6 +133,7 @@ function resetUiForScan() {
 }
 
 function showError(message) {
+  document.body.classList.remove('is-scanning');
   ui.startPanel.classList.remove('hidden');
   ui.scanHud.classList.add('hidden');
   ui.contentPanel.classList.add('hidden');

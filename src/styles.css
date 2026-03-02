@@ -24,6 +24,10 @@ body {
   color: var(--text);
 }
 
+body.is-scanning {
+  background: transparent !important;
+}
+
 h1,
 h2,
 p {
@@ -34,7 +38,7 @@ p {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
-  z-index: 1;
+  z-index: 0;
   width: 100vw !important;
   height: var(--app-height) !important;
   min-height: var(--app-height) !important;
@@ -61,7 +65,7 @@ video.mindar-video {
   height: var(--app-height) !important;
   min-height: var(--app-height) !important;
   object-fit: cover !important;
-  z-index: 0 !important;
+  z-index: 1 !important;
 }
 
 div.mindar-ui-overlay {
@@ -77,7 +81,7 @@ canvas[data-aframe-canvas] {
 
 .overlay-shell {
   position: fixed;
-  z-index: 2;
+  z-index: 3;
   inset: 0;
   pointer-events: none;
   padding: 14px;
@@ -162,7 +166,7 @@ h1 {
   aspect-ratio: 1;
   border-radius: 22px;
   border: 2px solid rgba(255, 255, 255, 0.76);
-  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .success-overlay {
