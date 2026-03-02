@@ -73,6 +73,12 @@ a-scene.ar-scene {
   z-index: 1;
 }
 
+a-scene.ar-scene.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 a-scene.ar-scene video,
 a-scene.ar-scene canvas,
 video.mindar-video {
@@ -155,10 +161,13 @@ div.mindar-ui-overlay {
   width: 100%;
   overflow: hidden;
   display: grid;
+  isolation: isolate;
 }
 
 .home-abstract {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   min-height: var(--app-height);
   width: 100%;
   background:
@@ -200,20 +209,20 @@ div.mindar-ui-overlay {
   inset: -28%;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.14;
+  opacity: 0.06;
   background-repeat: repeat;
   background-size: 112px 112px;
   transform: rotate(-21deg) scale(1.28);
   transform-origin: center;
   animation: wine-pattern-drift 36s linear infinite;
-  mix-blend-mode: screen;
-  filter: invert(1) brightness(1.4) contrast(1.05) drop-shadow(0 0 4px rgba(186, 217, 255, 0.3));
+  mix-blend-mode: normal;
+  filter: none;
 }
 
 .home-center {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   display: grid;
   place-items: center;
   padding: clamp(14px, 3vw, 28px);
@@ -356,7 +365,7 @@ h2 {
   left: 0;
   right: 0;
   bottom: 16px;
-  z-index: 3;
+  z-index: 4;
 }
 
 .admin-link {
