@@ -90,24 +90,15 @@
 
           <a-entity
             id="labelSweepTrack"
-            position="-0.78 -0.66 0.002"
-            rotation="0 0 -24"
-            animation__sweep="property: position; from: -0.78 -0.66 0.002; to: 0.78 0.66 0.002; dur: 980; dir: alternate; loop: true; easing: easeInOutSine"
+            position="-1.05 -1.05 0.002"
+            rotation="0 0 -28"
+            animation__sweep="property: position; from: -1.05 -1.05 0.002; to: 1.05 1.05 0.002; dur: 1200; loop: true; easing: linear"
           >
             <a-plane
-              width="0.23"
-              height="1.24"
-              material="shader: flat; color: #eef8ff; opacity: 0.1; transparent: true"
-            ></a-plane>
-            <a-plane
-              width="0.13"
-              height="1.24"
-              material="shader: flat; color: #f4fbff; opacity: 0.22; transparent: true"
-            ></a-plane>
-            <a-plane
-              width="0.06"
-              height="1.24"
-              material="shader: flat; color: #ffffff; opacity: 0.5; transparent: true"
+              width="0.18"
+              height="1.9"
+              material="shader: flat; color: #ffffff; opacity: 0.32; transparent: true"
+              animation__spark="property: material.opacity; from: 0.22; to: 0.38; dir: alternate; dur: 220; loop: true"
             ></a-plane>
           </a-entity>
         </a-entity>

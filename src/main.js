@@ -29,10 +29,10 @@ let viewportSyncBound = false;
 const LABEL_FRAME = {
   width: 0.68,
   height: 1.02,
-  sweepAngle: -24,
-  sweepOffsetX: 0.78,
-  sweepOffsetY: 0.66,
-  sweepDuration: 980,
+  sweepAngle: -28,
+  sweepOffsetX: 1.05,
+  sweepOffsetY: 1.05,
+  sweepDuration: 1200,
 };
 const OUTLINE_MS = 700;
 const SUCCESS_MS = 1300;
@@ -122,19 +122,19 @@ function applyOutlineSize() {
   const height =
     pickPositive(LABEL_FRAME.height, 1.02);
   const sweepAngle =
-    pickNumber(LABEL_FRAME.sweepAngle, -24);
+    pickNumber(LABEL_FRAME.sweepAngle, -28);
   const sweepOffsetX =
-    pickPositive(LABEL_FRAME.sweepOffsetX, 0.78);
+    pickPositive(LABEL_FRAME.sweepOffsetX, 1.05);
   const sweepOffsetY =
-    pickPositive(LABEL_FRAME.sweepOffsetY, 0.66);
+    pickPositive(LABEL_FRAME.sweepOffsetY, 1.05);
   const sweepDuration =
-    pickPositive(LABEL_FRAME.sweepDuration, 980);
+    pickPositive(LABEL_FRAME.sweepDuration, 1200);
 
   ui.labelOutline.setAttribute('scale', `${width} ${height} 1`);
   ui.labelSweepTrack.setAttribute('rotation', `0 0 ${sweepAngle}`);
   ui.labelSweepTrack.setAttribute(
     'animation__sweep',
-    `property: position; from: -${sweepOffsetX} -${sweepOffsetY} 0.002; to: ${sweepOffsetX} ${sweepOffsetY} 0.002; dur: ${sweepDuration}; dir: alternate; loop: true; easing: easeInOutSine`
+    `property: position; from: -${sweepOffsetX} -${sweepOffsetY} 0.002; to: ${sweepOffsetX} ${sweepOffsetY} 0.002; dur: ${sweepDuration}; loop: true; easing: linear`
   );
 }
 
