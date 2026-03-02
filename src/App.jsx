@@ -3,9 +3,34 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
+
+function isApiEnabled() {
+  return Boolean(API_BASE_URL);
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const payload = isJson ? await response.json() : null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `API error: ${response.status}`);
+  }
+
+  return payload;
+}
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -32,6 +57,7 @@ function normalizeWine(wine, fallbackIndex) {
     story: normalizeString(wine?.story),
     serving: normalizeString(wine?.serving),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0,
+    labelImage: normalizeString(wine?.labelImage),
     pairings: normalizeArray(wine?.pairings),
     gallery: normalizeArray(wine?.gallery),
   };
@@ -64,6 +90,7 @@ function getFormFromWine(wine) {
     story: wine?.story || '',
     serving: wine?.serving || '',
     rating: wine ? String(wine.rating ?? 0) : '0',
+    labelImage: wine?.labelImage || '',
     pairings: wine?.pairings?.join('\n') || '',
     gallery: wine?.gallery?.join('\n') || '',
   };
@@ -78,6 +105,7 @@ function createEmptyForm(nextIndex = 0) {
     story: '',
     serving: '',
     rating: '0',
+    labelImage: '',
     pairings: '',
     gallery: '',
   };
@@ -144,6 +172,22 @@ export default function App() {
 
     async function loadData() {
       try {
+        if (isApiEnabled()) {
+          const payload = await apiRequest('/wines');
+          const loaded = normalizeWines(payload.wines || []);
+          if (!active) {
+            return;
+          }
+          setWines(loaded);
+          if (loaded[0]) {
+            setSelectedWineId(loaded[0].id);
+            setForm(getFormFromWine(loaded[0]));
+          } else {
+            setForm(createEmptyForm(0));
+          }
+          return;
+        }
+
         const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localData) {
           const parsed = JSON.parse(localData);
@@ -390,7 +434,15 @@ export default function App() {
     setNotice({ text: '', type: '' });
   }
 
-  function saveToStorage(nextWines) {
+  async function persistWines(nextWines) {
+    if (isApiEnabled()) {
+      await apiRequest('/wines', {
+        method: 'PUT',
+        body: JSON.stringify({ wines: nextWines }),
+      });
+      return;
+    }
+
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ wines: nextWines }));
   }
 
@@ -423,6 +475,28 @@ export default function App() {
   function handleFormChange(event) {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function handleLabelImageUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      setForm((prev) => ({ ...prev, labelImage: result }));
+      setNotice({ text: 'Фото этикетки добавлено.', type: 'success' });
+    };
+    reader.onerror = () => {
+      setNotice({ text: 'Не удалось прочитать файл этикетки.', type: 'error' });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleClearLabelImage() {
+    setForm((prev) => ({ ...prev, labelImage: '' }));
   }
 
   function normalizeFormWine() {
@@ -458,12 +532,13 @@ export default function App() {
       story,
       serving,
       rating: Number(rating.toFixed(1)),
+      labelImage: normalizeString(form.labelImage),
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
   }
 
-  function handleSaveWine(event) {
+  async function handleSaveWine(event) {
     event.preventDefault();
 
     try {
@@ -495,21 +570,26 @@ export default function App() {
       setForm(getFormFromWine(wine));
       setAdminView('detail');
       setNotice({ text: 'Сохранено.', type: 'success' });
-      saveToStorage(nextWines);
+      await persistWines(nextWines);
     } catch (error) {
       setNotice({ text: error.message || 'Не удалось сохранить вино.', type: 'error' });
     }
   }
 
-  function handleDeleteWine() {
+  async function handleDeleteWine() {
     if (!selectedWineId) {
       setNotice({ text: 'Сначала выбери вино для удаления.', type: 'error' });
       return;
     }
 
     const nextWines = wines.filter((wine) => wine.id !== selectedWineId);
-    setWines(nextWines);
-    saveToStorage(nextWines);
+    try {
+      await persistWines(nextWines);
+      setWines(nextWines);
+    } catch (error) {
+      setNotice({ text: error.message || 'Не удалось удалить карточку.', type: 'error' });
+      return;
+    }
 
     if (!nextWines.length) {
       setSelectedWineId(null);
@@ -555,6 +635,7 @@ export default function App() {
 
       const payload = await response.json();
       const restored = normalizeWines(payload.wines);
+      await persistWines(restored);
       setWines(restored);
 
       if (restored[0]) {
@@ -749,6 +830,12 @@ export default function App() {
                   <p><strong>ID:</strong> {selectedWine.id}</p>
                   <p><strong>Подача:</strong> {selectedWine.serving}</p>
                   <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
+                  {selectedWine.labelImage && (
+                    <p className="detail-wide">
+                      <strong>Этикетка:</strong>
+                      <img className="label-preview" src={selectedWine.labelImage} alt={selectedWine.title} />
+                    </p>
+                  )}
                   <p className="detail-wide"><strong>Pairings:</strong> {selectedWine.pairings.join(', ') || '—'}</p>
                   <p className="detail-wide"><strong>Gallery:</strong> {selectedWine.gallery.length} изображений</p>
                 </div>
@@ -818,6 +905,24 @@ export default function App() {
                     <span>Подача</span>
                     <textarea name="serving" rows="3" value={form.serving} onChange={handleFormChange} required />
                   </label>
+
+                  <div className="field field-wide">
+                    <span>Фото этикетки (для target)</span>
+                    <div className="label-upload-row">
+                      <input type="file" accept="image/*" onChange={handleLabelImageUpload} />
+                      {form.labelImage && (
+                        <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
+                          Убрать фото
+                        </button>
+                      )}
+                    </div>
+                    {form.labelImage && (
+                      <img className="label-preview" src={form.labelImage} alt="Этикетка для распознавания" />
+                    )}
+                    <p className="field-note">
+                      Для фактического распознавания фото нужно добавить в target-файл MindAR (`.mind`) и выставить соответствующий `targetIndex`.
+                    </p>
+                  </div>
 
                   <label className="field field-wide">
                     <span>Pairings (запятая или новая строка)</span>
