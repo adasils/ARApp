@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
-const START_BACKGROUND_IMAGE = `${import.meta.env.BASE_URL}images/start-bg.svg`;
+const START_BACKGROUND_IMAGE = `${import.meta.env.BASE_URL}images/background.png`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const SUCCESS_MS = 1300;
 
