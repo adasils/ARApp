@@ -88,14 +88,28 @@
             material="shader: flat; color: #ffffff; opacity: 0.95; transparent: true"
           ></a-plane>
 
-          <a-plane
-            id="labelSweep"
-            width="0.17"
-            height="1.02"
-            position="-0.58 0 0.002"
-            material="shader: flat; color: #f7fcff; opacity: 0.24; transparent: true"
-            animation__sweep="property: position; from: -0.58 0 0.002; to: 0.58 0 0.002; dur: 920; loop: true; easing: linear"
-          ></a-plane>
+          <a-entity
+            id="labelSweepTrack"
+            position="-0.78 -0.66 0.002"
+            rotation="0 0 -24"
+            animation__sweep="property: position; from: -0.78 -0.66 0.002; to: 0.78 0.66 0.002; dur: 980; dir: alternate; loop: true; easing: easeInOutSine"
+          >
+            <a-plane
+              width="0.23"
+              height="1.24"
+              material="shader: flat; color: #eef8ff; opacity: 0.1; transparent: true"
+            ></a-plane>
+            <a-plane
+              width="0.13"
+              height="1.24"
+              material="shader: flat; color: #f4fbff; opacity: 0.22; transparent: true"
+            ></a-plane>
+            <a-plane
+              width="0.06"
+              height="1.24"
+              material="shader: flat; color: #ffffff; opacity: 0.5; transparent: true"
+            ></a-plane>
+          </a-entity>
         </a-entity>
       </a-entity>
     </a-scene>

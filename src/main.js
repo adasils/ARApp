@@ -7,6 +7,7 @@ const ui = {
   arScene: document.getElementById('arScene'),
   targetEntity: document.getElementById('targetEntity'),
   labelOutline: document.getElementById('labelOutline'),
+  labelSweepTrack: document.getElementById('labelSweepTrack'),
   startPanel: document.getElementById('startPanel'),
   startScanButton: document.getElementById('startScanButton'),
   scanHud: document.getElementById('scanHud'),
@@ -25,7 +26,14 @@ let wines = [];
 let scanHandled = false;
 let arStarted = false;
 let viewportSyncBound = false;
-const DEFAULT_OUTLINE = { width: 1, height: 0.75 };
+const DEFAULT_OUTLINE = {
+  width: 0.68,
+  height: 1.02,
+  sweepAngle: -24,
+  sweepOffsetX: 0.78,
+  sweepOffsetY: 0.66,
+  sweepDuration: 980,
+};
 const OUTLINE_MS = 700;
 const SUCCESS_MS = 1300;
 
@@ -100,17 +108,34 @@ function getMindArSystem() {
   return ui.arScene.systems['mindar-image-system'];
 }
 
+function pickPositive(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function pickNumber(value, fallback) {
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function applyOutlineSize(outline) {
   const width =
-    Number.isFinite(outline?.width) && outline.width > 0
-      ? outline.width
-      : DEFAULT_OUTLINE.width;
+    pickPositive(outline?.width, DEFAULT_OUTLINE.width);
   const height =
-    Number.isFinite(outline?.height) && outline.height > 0
-      ? outline.height
-      : DEFAULT_OUTLINE.height;
+    pickPositive(outline?.height, DEFAULT_OUTLINE.height);
+  const sweepAngle =
+    pickNumber(outline?.sweepAngle, DEFAULT_OUTLINE.sweepAngle);
+  const sweepOffsetX =
+    pickPositive(outline?.sweepOffsetX, DEFAULT_OUTLINE.sweepOffsetX);
+  const sweepOffsetY =
+    pickPositive(outline?.sweepOffsetY, DEFAULT_OUTLINE.sweepOffsetY);
+  const sweepDuration =
+    pickPositive(outline?.sweepDuration, DEFAULT_OUTLINE.sweepDuration);
 
   ui.labelOutline.setAttribute('scale', `${width} ${height} 1`);
+  ui.labelSweepTrack.setAttribute('rotation', `0 0 ${sweepAngle}`);
+  ui.labelSweepTrack.setAttribute(
+    'animation__sweep',
+    `property: position; from: -${sweepOffsetX} -${sweepOffsetY} 0.002; to: ${sweepOffsetX} ${sweepOffsetY} 0.002; dur: ${sweepDuration}; dir: alternate; loop: true; easing: easeInOutSine`
+  );
 }
 
 function showOutline(outline) {
