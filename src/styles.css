@@ -38,7 +38,7 @@ p {
   position: fixed !important;
   top: 0 !important;
   left: 0 !important;
-  z-index: 0;
+  z-index: 2;
   width: 100vw !important;
   height: var(--app-height) !important;
   min-height: var(--app-height) !important;
@@ -75,8 +75,9 @@ div.mindar-ui-overlay {
   height: var(--app-height) !important;
 }
 
-canvas[data-aframe-canvas] {
-  opacity: 0 !important;
+.ar-scene canvas[data-aframe-canvas] {
+  background: transparent !important;
+  z-index: 2 !important;
 }
 
 .overlay-shell {
