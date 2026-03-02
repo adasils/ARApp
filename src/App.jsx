@@ -8,8 +8,8 @@ const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-j
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
-const LABEL_MAX_SIDE = 1400;
-const LABEL_JPEG_QUALITY = 0.82;
+const LABEL_MAX_SIDE = 1800;
+const LABEL_JPEG_QUALITY = 0.9;
 
 function isApiEnabled() {
   return Boolean(API_BASE_URL);
@@ -133,6 +133,7 @@ function loadImage(dataUrl) {
 async function optimizeLabelImage(file) {
   const sourceDataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(sourceDataUrl);
+  const sourceMime = String(file.type || '').toLowerCase();
   const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
   const ratio = maxSide > LABEL_MAX_SIDE ? LABEL_MAX_SIDE / maxSide : 1;
   const width = Math.max(1, Math.round(image.naturalWidth * ratio));
@@ -157,7 +158,10 @@ async function optimizeLabelImage(file) {
   }
 
   context.drawImage(image, 0, 0, width, height);
-  const optimizedDataUrl = canvas.toDataURL('image/jpeg', LABEL_JPEG_QUALITY);
+  const outputMime = sourceMime === 'image/png' ? 'image/png' : 'image/jpeg';
+  const optimizedDataUrl = outputMime === 'image/png'
+    ? canvas.toDataURL('image/png')
+    : canvas.toDataURL('image/jpeg', LABEL_JPEG_QUALITY);
 
   const sourceBytes = estimateBase64Bytes(sourceDataUrl);
   const optimizedBytes = estimateBase64Bytes(optimizedDataUrl);
@@ -217,6 +221,7 @@ export default function App() {
   const [form, setForm] = useState(createEmptyForm(0));
   const [mindTargetSrc, setMindTargetSrc] = useState(DEMO_MIND_TARGET_SRC);
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
+  const [compiledTargetCount, setCompiledTargetCount] = useState(0);
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
   const [labelProcess, setLabelProcess] = useState({
@@ -330,10 +335,12 @@ export default function App() {
           ]);
           const loaded = normalizeWines(payload.wines || []);
           const hasCompiledTargets = Boolean(manifestPayload?.manifest?.ready);
+          const targetCount = Number.parseInt(manifestPayload?.manifest?.targetCount, 10) || 0;
           if (!active) {
             return;
           }
           setCompiledTargetsReady(hasCompiledTargets);
+          setCompiledTargetCount(targetCount);
           setMindTargetSrc(`${API_BASE_URL}/targets/mind`);
           setWines(loaded);
           if (loaded[0]) {
@@ -346,6 +353,7 @@ export default function App() {
         }
 
         setCompiledTargetsReady(false);
+        setCompiledTargetCount(0);
         setMindTargetSrc(DEMO_MIND_TARGET_SRC);
         const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localData) {
@@ -405,15 +413,16 @@ export default function App() {
 
     root.innerHTML = '';
 
-    const targetIndexes = [...new Set(wines.map((wine) => wine.targetIndex))].sort(
-      (a, b) => a - b
-    );
-
-    const indexes = targetIndexes.length ? targetIndexes : [0];
+    const wineIndexes = [...new Set(wines.map((wine) => wine.targetIndex))].sort((a, b) => a - b);
+    const manifestIndexes = isApiEnabled() && compiledTargetsReady && compiledTargetCount > 0
+      ? Array.from({ length: compiledTargetCount }, (_, index) => index)
+      : [];
+    const indexes = [...new Set([...wineIndexes, ...manifestIndexes])].sort((a, b) => a - b);
+    const safeIndexes = indexes.length ? indexes : [0];
 
     const cleanup = [];
 
-    indexes.forEach((targetIndex) => {
+    safeIndexes.forEach((targetIndex) => {
       const target = document.createElement('a-entity');
       target.setAttribute('mindar-image-target', `targetIndex: ${targetIndex}`);
 
@@ -430,7 +439,7 @@ export default function App() {
       cleanup.forEach((fn) => fn());
       root.innerHTML = '';
     };
-  }, [wines]);
+  }, [wines, compiledTargetsReady, compiledTargetCount]);
 
   useEffect(() => {
     return () => {
@@ -524,7 +533,9 @@ export default function App() {
       if (isApiEnabled()) {
         const manifest = await fetchTargetsManifest();
         const hasCompiledTargets = Boolean(manifest?.ready);
+        const targetCount = Number.parseInt(manifest?.targetCount, 10) || 0;
         setCompiledTargetsReady(hasCompiledTargets);
+        setCompiledTargetCount(targetCount);
         if (!hasCompiledTargets) {
           setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
           return;
