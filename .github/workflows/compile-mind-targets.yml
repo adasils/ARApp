@@ -1,0 +1,27 @@
+name: Compile Mind Targets
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+jobs:
+  compile-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install compiler deps
+        run: npm install --no-save mind-ar
+
+      - name: Run compiler
+        env:
+          WORKER_API_BASE: ${{ secrets.WORKER_API_BASE }}
+          TARGETS_ADMIN_KEY: ${{ secrets.TARGETS_ADMIN_KEY }}
+        run: node scripts/compile-mind-from-worker.mjs

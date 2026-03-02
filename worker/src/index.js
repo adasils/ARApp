@@ -1,16 +1,17 @@
 const WINES_KEY = 'wines';
 const LABEL_JOB_PREFIX = 'label-job:';
+const LABEL_RECORD_PREFIX = 'label-record:';
+const LABEL_INDEX_KEY = 'label-index';
+const TARGETS_MIND_KEY = 'targets-mind-v1';
+const TARGETS_MANIFEST_KEY = 'targets-manifest-v1';
 const LABEL_PROCESSING_MS = 3000;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
+    headers: withCorsHeaders({
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
+    }),
   });
 }
 
@@ -85,6 +86,128 @@ async function getLabelJob(env, jobId) {
   }
 }
 
+function makeLabelRecordKey(labelHash) {
+  return `${LABEL_RECORD_PREFIX}${labelHash}`;
+}
+
+async function getLabelRecord(env, labelHash) {
+  const raw = await env.WINES_KV.get(makeLabelRecordKey(labelHash));
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function saveLabelRecord(env, labelHash, record) {
+  await env.WINES_KV.put(makeLabelRecordKey(labelHash), JSON.stringify(record));
+}
+
+async function getLabelIndex(env) {
+  const raw = await env.WINES_KV.get(LABEL_INDEX_KEY);
+  if (!raw) {
+    return {};
+  }
+  try {
+    return JSON.parse(raw) || {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveLabelIndex(env, indexMap) {
+  await env.WINES_KV.put(LABEL_INDEX_KEY, JSON.stringify(indexMap));
+}
+
+async function getTargetsManifest(env) {
+  const raw = await env.WINES_KV.get(TARGETS_MANIFEST_KEY);
+  if (!raw) {
+    return {
+      ready: false,
+      targetCount: 0,
+      signature: null,
+      compiledAt: null,
+      labelHashes: [],
+    };
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      ready: false,
+      targetCount: 0,
+      signature: null,
+      compiledAt: null,
+      labelHashes: [],
+    };
+  }
+}
+
+async function saveTargetsManifest(env, manifest) {
+  await env.WINES_KV.put(TARGETS_MANIFEST_KEY, JSON.stringify(manifest));
+}
+
+function fromBase64(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function withCorsHeaders(headers = {}) {
+  return {
+    ...headers,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,x-admin-key',
+  };
+}
+
+function isAdminRequest(request, env) {
+  const expected = String(env.TARGETS_ADMIN_KEY || '').trim();
+  const received = String(request.headers.get('x-admin-key') || '').trim();
+  return expected && received && expected === received;
+}
+
+function normalizeDataUrl(labelImage) {
+  const image = String(labelImage || '').trim();
+  const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    throw new Error('labelImage must be a valid base64 data URL.');
+  }
+
+  const mime = match[1];
+  const base64 = match[2];
+  if (base64.length < 500) {
+    throw new Error('labelImage looks too small.');
+  }
+
+  return { dataUrl: image, mime, base64 };
+}
+
+async function sha256Hex(input) {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digestArray = Array.from(new Uint8Array(digest));
+  return digestArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function getNextTargetIndex(wines, labelIndexMap) {
+  const wineMax = wines.length
+    ? wines.reduce((max, wine) => Math.max(max, Number.parseInt(wine.targetIndex, 10) || 0), 0)
+    : -1;
+  const labelIndexes = Object.values(labelIndexMap || {})
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isInteger(value) && value >= 0);
+  const labelMax = labelIndexes.length ? Math.max(...labelIndexes) : -1;
+  return Math.max(wineMax, labelMax) + 1;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -92,11 +215,7 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
+        headers: withCorsHeaders(),
       });
     }
 
@@ -124,19 +243,61 @@ export default {
       }
     }
 
+    if (url.pathname === '/labels/records' && request.method === 'GET') {
+      if (!isAdminRequest(request, env)) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
+
+      const labelIndexMap = await getLabelIndex(env);
+      const entries = Object.entries(labelIndexMap)
+        .map(([labelHash, targetIndex]) => ({ labelHash, targetIndex }))
+        .filter((entry) => Number.isInteger(Number.parseInt(entry.targetIndex, 10)));
+
+      const records = [];
+      for (let i = 0; i < entries.length; i += 1) {
+        const entry = entries[i];
+        const record = await getLabelRecord(env, entry.labelHash);
+        if (record && record.status === 'ready' && record.dataUrl) {
+          records.push({
+            labelHash: entry.labelHash,
+            targetIndex: Number.parseInt(entry.targetIndex, 10),
+            dataUrl: record.dataUrl,
+            mime: record.mime || null,
+            updatedAt: record.updatedAt || null,
+          });
+        }
+      }
+
+      records.sort((a, b) => a.targetIndex - b.targetIndex);
+      return json({ records });
+    }
+
     if (url.pathname === '/labels/process' && request.method === 'POST') {
       try {
         const payload = await request.json();
-        const labelImage = String(payload?.labelImage || '').trim();
-        if (!labelImage) {
-          return json({ error: 'labelImage is required.' }, 400);
+        const { dataUrl, mime, base64 } = normalizeDataUrl(payload?.labelImage);
+        const labelHash = await sha256Hex(base64);
+        const existingRecord = await getLabelRecord(env, labelHash);
+        if (existingRecord && existingRecord.status === 'ready') {
+          const existingJob = {
+            id: crypto.randomUUID(),
+            status: 'ready',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            targetIndex: existingRecord.targetIndex,
+            wineId: String(payload?.wineId || '').trim() || null,
+            labelHash,
+            deduplicated: true,
+            error: null,
+          };
+          await saveLabelJob(env, existingJob);
+          return json({ job: existingJob }, 200);
         }
 
         const wines = await getWines(env);
+        const labelIndexMap = await getLabelIndex(env);
         const requestedTargetIndex = Number.parseInt(payload?.targetIndex, 10);
-        const nextTargetIndex = wines.length
-          ? wines.reduce((max, wine) => Math.max(max, Number.parseInt(wine.targetIndex, 10) || 0), 0) + 1
-          : 0;
+        const nextTargetIndex = getNextTargetIndex(wines, labelIndexMap);
 
         const targetIndex = Number.isInteger(requestedTargetIndex) && requestedTargetIndex >= 0
           ? requestedTargetIndex
@@ -149,10 +310,23 @@ export default {
           updatedAt: Date.now(),
           targetIndex,
           wineId: String(payload?.wineId || '').trim() || null,
+          labelHash,
+          deduplicated: false,
           error: null,
         };
 
+        const labelRecord = {
+          status: 'processing',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          targetIndex,
+          mime,
+          labelHash,
+          dataUrl,
+        };
+
         await saveLabelJob(env, job);
+        await saveLabelRecord(env, labelHash, labelRecord);
         return json({ job }, 202);
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
@@ -175,9 +349,74 @@ export default {
         job.status = 'ready';
         job.updatedAt = Date.now();
         await saveLabelJob(env, job);
+
+        if (job.labelHash) {
+          const record = await getLabelRecord(env, job.labelHash);
+          if (record) {
+            record.status = 'ready';
+            record.updatedAt = Date.now();
+            await saveLabelRecord(env, job.labelHash, record);
+          }
+
+          const labelIndexMap = await getLabelIndex(env);
+          labelIndexMap[job.labelHash] = job.targetIndex;
+          await saveLabelIndex(env, labelIndexMap);
+        }
       }
 
       return json({ job });
+    }
+
+    if (url.pathname === '/targets/manifest' && request.method === 'GET') {
+      const manifest = await getTargetsManifest(env);
+      return json({ manifest });
+    }
+
+    if (url.pathname === '/targets/mind' && request.method === 'GET') {
+      const mindBase64 = await env.WINES_KV.get(TARGETS_MIND_KEY);
+      if (!mindBase64) {
+        return json({ error: 'Compiled targets not found.' }, 404);
+      }
+
+      return new Response(fromBase64(mindBase64), {
+        status: 200,
+        headers: withCorsHeaders({
+          'Content-Type': 'application/octet-stream',
+          'Cache-Control': 'public, max-age=30',
+        }),
+      });
+    }
+
+    if (url.pathname === '/targets/mind' && request.method === 'PUT') {
+      if (!isAdminRequest(request, env)) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
+
+      try {
+        const payload = await request.json();
+        const mindBase64 = String(payload?.mindBase64 || '').trim();
+        const labelHashes = Array.isArray(payload?.labelHashes)
+          ? payload.labelHashes.map((hash) => String(hash || '').trim()).filter(Boolean)
+          : [];
+        const signature = String(payload?.signature || '').trim() || null;
+        const targetCount = Number.parseInt(payload?.targetCount, 10) || 0;
+
+        if (!mindBase64) {
+          return json({ error: 'mindBase64 is required.' }, 400);
+        }
+
+        await env.WINES_KV.put(TARGETS_MIND_KEY, mindBase64);
+        await saveTargetsManifest(env, {
+          ready: true,
+          targetCount,
+          signature,
+          labelHashes,
+          compiledAt: Date.now(),
+        });
+        return json({ ok: true });
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
     }
 
     const wineMatch = url.pathname.match(/^\/wines\/([^/]+)$/);

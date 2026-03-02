@@ -4,6 +4,7 @@ const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').trim();
+const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind';
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
@@ -125,6 +126,8 @@ export default function App() {
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [adminView, setAdminView] = useState('list');
   const [form, setForm] = useState(createEmptyForm(0));
+  const [mindTargetSrc, setMindTargetSrc] = useState(DEMO_MIND_TARGET_SRC);
+  const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
   const [labelProcess, setLabelProcess] = useState({
@@ -180,11 +183,19 @@ export default function App() {
     async function loadData() {
       try {
         if (isApiEnabled()) {
-          const payload = await apiRequest('/wines');
+          const [payload, manifestPayload] = await Promise.all([
+            apiRequest('/wines'),
+            fetch(`${API_BASE_URL}/targets/manifest`)
+              .then((response) => (response.ok ? response.json() : null))
+              .catch(() => null),
+          ]);
           const loaded = normalizeWines(payload.wines || []);
+          const hasCompiledTargets = Boolean(manifestPayload?.manifest?.ready);
           if (!active) {
             return;
           }
+          setCompiledTargetsReady(hasCompiledTargets);
+          setMindTargetSrc(hasCompiledTargets ? `${API_BASE_URL}/targets/mind` : DEMO_MIND_TARGET_SRC);
           setWines(loaded);
           if (loaded[0]) {
             setSelectedWineId(loaded[0].id);
@@ -195,6 +206,8 @@ export default function App() {
           return;
         }
 
+        setCompiledTargetsReady(false);
+        setMindTargetSrc(DEMO_MIND_TARGET_SRC);
         const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localData) {
           const parsed = JSON.parse(localData);
@@ -558,7 +571,7 @@ export default function App() {
           error: '',
         });
         setForm((prev) => ({ ...prev, targetIndex: String(job.targetIndex) }));
-        setNotice({ text: 'Этикетка обработана и готова для сканирования.', type: 'success' });
+        setNotice({ text: 'Этикетка обработана. Активация скана обычно занимает до 5 минут.', type: 'success' });
         return;
       }
 
@@ -804,7 +817,7 @@ export default function App() {
     <>
       <a-scene
         ref={sceneRef}
-        mindar-image="imageTargetSrc: https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind; autoStart: false; uiScanning: no; uiLoading: no"
+        mindar-image={`imageTargetSrc: ${mindTargetSrc}; autoStart: false; uiScanning: no; uiLoading: no`}
         color-space="sRGB"
         renderer="colorManagement: true, physicallyCorrectLights, alpha: true"
         vr-mode-ui="enabled: false"
@@ -831,6 +844,11 @@ export default function App() {
                 <p className="lead">
                   Запусти камеру, наведи на этикетку и покажи карточку с контентом.
                 </p>
+                {isApiEnabled() && !compiledTargetsReady && (
+                  <p className="field-note">
+                    Новые этикетки появятся в сканере после фоновой компиляции target-файла (обычно до 5 минут).
+                  </p>
+                )}
                 {startError && <p className="notice is-error">{startError}</p>}
                 <div className="actions-row">
                   <button className="primary-btn" onClick={handleStartScan}>

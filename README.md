@@ -62,6 +62,8 @@ npm run preview
 - `DELETE /wines/:id`
 - `POST /labels/process` (запуск обработки фото этикетки)
 - `GET /labels/process/:jobId` (статус обработки)
+- `GET /targets/manifest` (статус compiled targets)
+- `GET /targets/mind` (актуальный `.mind` для сканера)
 
 ### Быстрый запуск API
 
@@ -93,6 +95,27 @@ VITE_API_BASE_URL=https://<your-worker>.workers.dev
 2. Нажми `Обработать этикетку`
 3. Дождись статуса `Готово`
 4. Сохрани карточку вина
+
+## Автоматическая сборка `.mind` (без ручной компиляции)
+
+Workflow: [compile-mind-targets.yml](/Users/alenanzarova/GitHub/ARApp/.github/workflows/compile-mind-targets.yml)
+- запускается по расписанию каждые 5 минут и вручную (`workflow_dispatch`)
+- забирает готовые этикетки из Worker
+- компилирует `targets.mind`
+- загружает результат обратно в Worker (`/targets/mind`)
+
+### GitHub Secrets для workflow
+- `WORKER_API_BASE` — URL API, например `https://wine-label-api.<subdomain>.workers.dev`
+- `TARGETS_ADMIN_KEY` — секретный ключ для сервисных endpoint'ов
+
+### Secret в Cloudflare Worker
+Добавь секрет `TARGETS_ADMIN_KEY` в Worker (значение должно совпадать с GitHub Secret):
+
+```bash
+wrangler secret put TARGETS_ADMIN_KEY
+```
+
+После этого новые этикетки из админки будут попадать в сканер автоматически после фоновой компиляции (обычно до 5 минут).
 
 ## Формат данных
 
