@@ -182,6 +182,20 @@ div.mindar-ui-overlay {
     );
 }
 
+.home-pattern {
+  position: absolute;
+  inset: -28%;
+  pointer-events: none;
+  opacity: 0.11;
+  background-image: var(--wine-pattern-image);
+  background-repeat: repeat;
+  background-size: 84px 84px;
+  transform: rotate(-21deg) scale(1.28);
+  transform-origin: center;
+  animation: wine-pattern-drift 36s linear infinite;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.2));
+}
+
 .home-center {
   position: absolute;
   inset: 0;
@@ -578,6 +592,16 @@ h2 {
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes wine-pattern-drift {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 380px 240px;
   }
 }
 

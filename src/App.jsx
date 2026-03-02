@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
 const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
+const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
 const SUCCESS_MS = 1300;
 
 function normalizeString(value) {
@@ -529,8 +530,12 @@ export default function App() {
 
       <main className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''}`}>
         {mode === 'home' && (
-          <section className="home-screen">
+          <section
+            className="home-screen"
+            style={{ '--wine-pattern-image': `url(${WINE_PATTERN_IMAGE})` }}
+          >
             <div className="home-abstract" aria-hidden="true"></div>
+            <div className="home-pattern" aria-hidden="true"></div>
             <div className="home-center">
               <div className="home-card">
                 <p className="eyebrow">AR Scanning</p>
