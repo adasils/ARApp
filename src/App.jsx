@@ -118,6 +118,7 @@ export default function App() {
   const scanHandledRef = useRef(false);
   const modeRef = useRef('home');
   const feedbackTimersRef = useRef([]);
+  const labelPollTimerRef = useRef(null);
 
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
@@ -126,6 +127,12 @@ export default function App() {
   const [form, setForm] = useState(createEmptyForm(0));
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
+  const [labelProcess, setLabelProcess] = useState({
+    jobId: null,
+    status: 'idle',
+    targetIndex: null,
+    error: '',
+  });
   const [notice, setNotice] = useState({ text: '', type: '' });
   const [startError, setStartError] = useState('');
 
@@ -276,6 +283,9 @@ export default function App() {
   useEffect(() => {
     return () => {
       clearFeedbackTimers();
+      if (labelPollTimerRef.current) {
+        window.clearTimeout(labelPollTimerRef.current);
+      }
       stopAr();
     };
   }, []);
@@ -449,6 +459,12 @@ export default function App() {
   function handleSelectWine(wine) {
     setSelectedWineId(wine.id);
     setAdminView('detail');
+    setLabelProcess({
+      jobId: null,
+      status: wine.labelImage ? 'ready' : 'idle',
+      targetIndex: wine.targetIndex,
+      error: '',
+    });
     setNotice({ text: '', type: '' });
   }
 
@@ -456,6 +472,12 @@ export default function App() {
     setSelectedWineId(null);
     setForm(createEmptyForm(nextTargetIndex));
     setAdminView('create');
+    setLabelProcess({
+      jobId: null,
+      status: 'idle',
+      targetIndex: null,
+      error: '',
+    });
     setNotice({ text: '', type: '' });
   }
 
@@ -465,10 +487,22 @@ export default function App() {
     }
     setForm(getFormFromWine(selectedWine));
     setAdminView('edit');
+    setLabelProcess({
+      jobId: null,
+      status: selectedWine.labelImage ? 'ready' : 'idle',
+      targetIndex: selectedWine.targetIndex,
+      error: '',
+    });
   }
 
   function handleBackToAdminList() {
     setAdminView('list');
+    setLabelProcess({
+      jobId: null,
+      status: 'idle',
+      targetIndex: null,
+      error: '',
+    });
     setNotice({ text: '', type: '' });
   }
 
@@ -487,6 +521,12 @@ export default function App() {
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
       setForm((prev) => ({ ...prev, labelImage: result }));
+      setLabelProcess({
+        jobId: null,
+        status: 'idle',
+        targetIndex: null,
+        error: '',
+      });
       setNotice({ text: 'Фото этикетки добавлено.', type: 'success' });
     };
     reader.onerror = () => {
@@ -497,6 +537,110 @@ export default function App() {
 
   function handleClearLabelImage() {
     setForm((prev) => ({ ...prev, labelImage: '' }));
+    setLabelProcess({
+      jobId: null,
+      status: 'idle',
+      targetIndex: null,
+      error: '',
+    });
+  }
+
+  async function pollLabelJob(jobId) {
+    try {
+      const payload = await apiRequest(`/labels/process/${jobId}`);
+      const job = payload.job;
+
+      if (job.status === 'ready') {
+        setLabelProcess({
+          jobId,
+          status: 'ready',
+          targetIndex: job.targetIndex,
+          error: '',
+        });
+        setForm((prev) => ({ ...prev, targetIndex: String(job.targetIndex) }));
+        setNotice({ text: 'Этикетка обработана и готова для сканирования.', type: 'success' });
+        return;
+      }
+
+      if (job.status === 'error') {
+        setLabelProcess({
+          jobId,
+          status: 'error',
+          targetIndex: null,
+          error: job.error || 'Ошибка обработки этикетки.',
+        });
+        setNotice({ text: job.error || 'Ошибка обработки этикетки.', type: 'error' });
+        return;
+      }
+
+      labelPollTimerRef.current = window.setTimeout(() => {
+        pollLabelJob(jobId);
+      }, 1200);
+    } catch (error) {
+      setLabelProcess({
+        jobId,
+        status: 'error',
+        targetIndex: null,
+        error: error.message || 'Не удалось получить статус обработки.',
+      });
+      setNotice({ text: error.message || 'Не удалось получить статус обработки.', type: 'error' });
+    }
+  }
+
+  async function handleProcessLabel() {
+    if (!isApiEnabled()) {
+      setNotice({ text: 'Обработка этикетки доступна только в API-режиме.', type: 'error' });
+      return;
+    }
+
+    if (!form.labelImage) {
+      setNotice({ text: 'Сначала загрузи фото этикетки.', type: 'error' });
+      return;
+    }
+
+    try {
+      if (labelPollTimerRef.current) {
+        window.clearTimeout(labelPollTimerRef.current);
+      }
+
+      setLabelProcess({
+        jobId: null,
+        status: 'processing',
+        targetIndex: null,
+        error: '',
+      });
+      setNotice({ text: 'Обрабатываем фото этикетки для сканирования...', type: '' });
+
+      const payload = await apiRequest('/labels/process', {
+        method: 'POST',
+        body: JSON.stringify({
+          wineId: selectedWineId,
+          labelImage: form.labelImage,
+          targetIndex: Number.parseInt(form.targetIndex, 10),
+        }),
+      });
+
+      const jobId = payload?.job?.id;
+      if (!jobId) {
+        throw new Error('Не получили jobId обработки.');
+      }
+
+      setLabelProcess({
+        jobId,
+        status: 'processing',
+        targetIndex: null,
+        error: '',
+      });
+      pollLabelJob(jobId);
+    } catch (error) {
+      setLabelProcess({
+        jobId: null,
+        status: 'error',
+        targetIndex: null,
+        error: error.message || 'Не удалось запустить обработку.',
+      });
+      setNotice({ text: error.message || 'Не удалось запустить обработку.', type: 'error' });
+    }
   }
 
   function normalizeFormWine() {
@@ -522,6 +666,10 @@ export default function App() {
 
     if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
       throw new Error('Рейтинг должен быть числом от 0 до 5.');
+    }
+
+    if (isApiEnabled() && normalizeString(form.labelImage) && labelProcess.status !== 'ready') {
+      throw new Error('Сначала дождись завершения обработки этикетки.');
     }
 
     return {
@@ -910,6 +1058,9 @@ export default function App() {
                     <span>Фото этикетки (для target)</span>
                     <div className="label-upload-row">
                       <input type="file" accept="image/*" onChange={handleLabelImageUpload} />
+                      <button className="primary-btn" type="button" onClick={handleProcessLabel}>
+                        Обработать этикетку
+                      </button>
                       {form.labelImage && (
                         <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
                           Убрать фото
@@ -918,6 +1069,15 @@ export default function App() {
                     </div>
                     {form.labelImage && (
                       <img className="label-preview" src={form.labelImage} alt="Этикетка для распознавания" />
+                    )}
+                    {labelProcess.status !== 'idle' && (
+                      <p className={`field-note process-note is-${labelProcess.status}`}>
+                        {labelProcess.status === 'processing' && 'Обрабатываем изображение...'}
+                        {labelProcess.status === 'ready' &&
+                          `Готово. Назначен targetIndex: ${labelProcess.targetIndex}.`}
+                        {labelProcess.status === 'error' &&
+                          `Ошибка: ${labelProcess.error || 'Не удалось обработать.'}`}
+                      </p>
                     )}
                     <p className="field-note">
                       Для фактического распознавания фото нужно добавить в target-файл MindAR (`.mind`) и выставить соответствующий `targetIndex`.

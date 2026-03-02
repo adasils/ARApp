@@ -1,3 +1,8 @@
 name = "wine-label-api"
 main = "src/index.js"
 compatibility_date = "2026-03-02"
+
+[[kv_namespaces]]
+binding = "WINES_KV"
+id = "5e306c84f47749baa1a4cd209c007ec9"
+preview_id = "5e306c84f47749baa1a4cd209c007ec9"

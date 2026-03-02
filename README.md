@@ -60,6 +60,8 @@ npm run preview
 - `PUT /wines`
 - `PUT /wines/:id`
 - `DELETE /wines/:id`
+- `POST /labels/process` (запуск обработки фото этикетки)
+- `GET /labels/process/:jobId` (статус обработки)
 
 ### Быстрый запуск API
 
@@ -85,6 +87,12 @@ VITE_API_BASE_URL=https://<your-worker>.workers.dev
 ```
 
 Если `VITE_API_BASE_URL` пустой, админка работает в прежнем режиме через `localStorage`.
+
+### Flow обработки этикетки в админке
+1. Загрузи фото этикетки
+2. Нажми `Обработать этикетку`
+3. Дождись статуса `Готово`
+4. Сохрани карточку вина
 
 ## Формат данных
 

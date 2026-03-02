@@ -1,4 +1,6 @@
 const WINES_KEY = 'wines';
+const LABEL_JOB_PREFIX = 'label-job:';
+const LABEL_PROCESSING_MS = 3000;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -63,6 +65,26 @@ async function saveWines(env, wines) {
   await env.WINES_KV.put(WINES_KEY, JSON.stringify({ wines }));
 }
 
+function makeJobKey(jobId) {
+  return `${LABEL_JOB_PREFIX}${jobId}`;
+}
+
+async function saveLabelJob(env, job) {
+  await env.WINES_KV.put(makeJobKey(job.id), JSON.stringify(job));
+}
+
+async function getLabelJob(env, jobId) {
+  const raw = await env.WINES_KV.get(makeJobKey(jobId));
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -100,6 +122,62 @@ export default {
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
       }
+    }
+
+    if (url.pathname === '/labels/process' && request.method === 'POST') {
+      try {
+        const payload = await request.json();
+        const labelImage = String(payload?.labelImage || '').trim();
+        if (!labelImage) {
+          return json({ error: 'labelImage is required.' }, 400);
+        }
+
+        const wines = await getWines(env);
+        const requestedTargetIndex = Number.parseInt(payload?.targetIndex, 10);
+        const nextTargetIndex = wines.length
+          ? wines.reduce((max, wine) => Math.max(max, Number.parseInt(wine.targetIndex, 10) || 0), 0) + 1
+          : 0;
+
+        const targetIndex = Number.isInteger(requestedTargetIndex) && requestedTargetIndex >= 0
+          ? requestedTargetIndex
+          : nextTargetIndex;
+
+        const job = {
+          id: crypto.randomUUID(),
+          status: 'processing',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          targetIndex,
+          wineId: String(payload?.wineId || '').trim() || null,
+          error: null,
+        };
+
+        await saveLabelJob(env, job);
+        return json({ job }, 202);
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    const jobMatch = url.pathname.match(/^\/labels\/process\/([^/]+)$/);
+    if (jobMatch && request.method === 'GET') {
+      const jobId = decodeURIComponent(jobMatch[1]);
+      const job = await getLabelJob(env, jobId);
+      if (!job) {
+        return json({ error: 'Job not found.' }, 404);
+      }
+
+      if (
+        job.status === 'processing' &&
+        Number.isFinite(job.createdAt) &&
+        Date.now() - job.createdAt >= LABEL_PROCESSING_MS
+      ) {
+        job.status = 'ready';
+        job.updatedAt = Date.now();
+        await saveLabelJob(env, job);
+      }
+
+      return json({ job });
     }
 
     const wineMatch = url.pathname.match(/^\/wines\/([^/]+)$/);

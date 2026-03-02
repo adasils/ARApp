@@ -642,6 +642,22 @@ h2 {
   color: var(--text-muted);
 }
 
+.process-note {
+  font-weight: 600;
+}
+
+.process-note.is-processing {
+  color: #ffd28f;
+}
+
+.process-note.is-ready {
+  color: var(--success);
+}
+
+.process-note.is-error {
+  color: var(--danger);
+}
+
 .label-upload-row {
   display: flex;
   gap: 10px;
