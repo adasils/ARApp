@@ -150,6 +150,7 @@ function normalizeWine(wine, fallbackIndex) {
       : Array.isArray(wine?.qualityNotes)
         ? wine.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
         : [],
+    status: normalizeString(wine?.status) === 'draft' ? 'draft' : 'published',
     pairings: normalizeArray(wine?.pairings),
     gallery: normalizeArray(wine?.gallery),
   };
@@ -524,6 +525,7 @@ function getFormFromWine(wine) {
     qualityNotes: derived.qualityNotes.length
       ? derived.qualityNotes
       : Array.isArray(wine?.qualityNotes) ? wine.qualityNotes : [],
+    status: wine?.status === 'draft' ? 'draft' : 'published',
   };
 }
 
@@ -549,6 +551,7 @@ function createEmptyForm() {
     qualityScore: 0,
     qualityStatus: 'unknown',
     qualityNotes: [],
+    status: 'draft',
   };
 }
 
@@ -567,6 +570,7 @@ export default function App() {
   const [wines, setWines] = useState([]);
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [adminView, setAdminView] = useState('list');
+  const [createStep, setCreateStep] = useState('labels');
   const [form, setForm] = useState(createEmptyForm());
   const [mindTargetSrc, setMindTargetSrc] = useState('');
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
@@ -615,6 +619,12 @@ export default function App() {
   const selectedCropAsset = useMemo(() => {
     return normalizeLabelAssets(form.labelAssets).find((asset) => asset.id === cropEditor.assetId) || null;
   }, [form.labelAssets, cropEditor.assetId]);
+
+  const hasRequiredLabelShots = useMemo(() => {
+    const assets = normalizeLabelAssets(form.labelAssets);
+    const roles = new Set(assets.map((asset) => asset.role));
+    return REQUIRED_LABEL_ROLES.every((role) => roles.has(role));
+  }, [form.labelAssets]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -1212,6 +1222,7 @@ export default function App() {
     setSelectedWineId(null);
     setForm(createEmptyForm());
     setAdminView('create');
+    setCreateStep('labels');
     setLabelProcess({
       jobId: null,
       status: 'idle',
@@ -1227,6 +1238,7 @@ export default function App() {
     }
     setForm(getFormFromWine(selectedWine));
     setAdminView('edit');
+    setCreateStep('form');
     setLabelProcess({
       jobId: null,
       status: selectedWine.labelImage ? 'ready' : 'idle',
@@ -1237,6 +1249,7 @@ export default function App() {
 
   function handleBackToAdminList() {
     setAdminView('list');
+    setCreateStep('labels');
     setLabelProcess({
       jobId: null,
       status: 'idle',
@@ -1790,7 +1803,16 @@ export default function App() {
     }
   }
 
-  function normalizeFormWine() {
+  async function handleContinueToWineCard() {
+    if (!hasRequiredLabelShots) {
+      setNotice({ text: 'Сначала заполни front, left и right.', type: 'error' });
+      return;
+    }
+    await handleAutofillFromLabel();
+    setCreateStep('form');
+  }
+
+  function normalizeFormWine({ asDraft = false } = {}) {
     const existingWine = selectedWineId ? wines.find((item) => item.id === selectedWineId) : null;
     const id = generateWineId(
       { title: form.title, region: form.region || form.subtitle },
@@ -1814,7 +1836,7 @@ export default function App() {
     const serving = normalizeString(form.serving);
     const rating = Number.parseFloat(form.rating);
 
-    if (!title || !subtitle || !story || !serving) {
+    if (!asDraft && (!title || !subtitle || !story || !serving)) {
       throw new Error('Заполни заголовок, подзаголовок, историю и подачу.');
     }
 
@@ -1822,7 +1844,7 @@ export default function App() {
       throw new Error('Рейтинг должен быть числом от 0 до 5.');
     }
 
-    if (normalizeString(form.labelImage) && labelProcess.status !== 'ready') {
+    if (!asDraft && normalizeString(form.labelImage) && labelProcess.status !== 'ready') {
       throw new Error('Сначала дождись завершения обработки этикетки.');
     }
 
@@ -1847,16 +1869,15 @@ export default function App() {
       qualityStatus: normalizeString(form.qualityStatus) || 'unknown',
       qualityNotes: Array.isArray(form.qualityNotes) ? form.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean) : [],
       labelAssets: normalizeLabelAssets(form.labelAssets),
+      status: asDraft ? 'draft' : 'published',
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
   }
 
-  async function handleSaveWine(event) {
-    event.preventDefault();
-
+  async function saveWineWithMode({ asDraft }) {
     try {
-      const wine = normalizeFormWine();
+      const wine = normalizeFormWine({ asDraft });
 
       const duplicateId = wines.some(
         (item) => item.id === wine.id && item.id !== selectedWineId
@@ -1883,11 +1904,21 @@ export default function App() {
       setSelectedWineId(wine.id);
       setForm(getFormFromWine(wine));
       setAdminView('detail');
-      setNotice({ text: 'Сохранено.', type: 'success' });
+      setCreateStep('labels');
+      setNotice({ text: asDraft ? 'Драфт сохранен.' : 'Опубликовано.', type: 'success' });
       await persistWines(nextWines);
     } catch (error) {
       setNotice({ text: error.message || 'Не удалось сохранить вино.', type: 'error' });
     }
+  }
+
+  async function handleSaveWine(event) {
+    event.preventDefault();
+    await saveWineWithMode({ asDraft: false });
+  }
+
+  async function handleSaveDraft() {
+    await saveWineWithMode({ asDraft: true });
   }
 
   async function handleDeleteWine() {
@@ -2117,7 +2148,7 @@ export default function App() {
                   {adminView === 'list' && 'Список вин'}
                   {adminView === 'detail' && 'Карточка вина'}
                   {adminView === 'edit' && 'Редактирование вина'}
-                  {adminView === 'create' && 'Добавить новое вино'}
+                  {adminView === 'create' && (createStep === 'labels' ? 'Новое вино: шаг 1/2 (этикетки)' : 'Новое вино: шаг 2/2 (карточка)')}
                 </h2>
                 <p className="lead">
                   Управляй карточками вин, рейтингами и контентом для AR.
@@ -2149,7 +2180,9 @@ export default function App() {
                     <button key={wine.id} className="wine-card" onClick={() => handleSelectWine(wine)}>
                       <div className="wine-item-title">{wine.title || wine.id}</div>
                       <div className="wine-item-subtitle">{wine.subtitle || 'Без подзаголовка'}</div>
-                      <div className="wine-item-meta">Рейтинг: {wine.rating.toFixed(1)} / 5</div>
+                      <div className="wine-item-meta">
+                        {wine.status === 'draft' ? 'Черновик' : 'Опубликовано'} · Рейтинг: {wine.rating.toFixed(1)} / 5
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -2195,6 +2228,8 @@ export default function App() {
             {(adminView === 'edit' || adminView === 'create') && (
               <form className="admin-form" onSubmit={handleSaveWine}>
                 <div className="form-grid">
+                  {(adminView !== 'create' || createStep === 'form') && (
+                    <>
                   <p className="field-note field-wide">
                     ID и target index назначаются автоматически при сохранении.
                   </p>
@@ -2257,7 +2292,10 @@ export default function App() {
                     <span>Подача</span>
                     <textarea name="serving" rows="3" value={form.serving} onChange={handleFormChange} required />
                   </label>
+                    </>
+                  )}
 
+                  {(adminView !== 'create' || createStep === 'labels') && (
                   <div className="field field-wide">
                     <span>Этикетки (мастер: front → left → right)</span>
                     <div className="label-upload-row">
@@ -2344,18 +2382,36 @@ export default function App() {
                       </p>
                     )}
                     <p className="field-note">
-                      После front/left/right нажми «Обработать этикетку», затем «Сохранить».
+                      После front/left/right нажми «Обработать этикетку», затем «Продолжить».
                     </p>
                     <div className="actions-row">
-                      <button className="ghost-btn" type="button" onClick={handleAutofillFromLabel}>
-                        Автозаполнить из этикетки
-                      </button>
                       <button className="primary-btn" type="button" onClick={handleProcessLabel}>
                         Обработать этикетку
                       </button>
+                      {adminView === 'create' && (
+                        <button
+                          className="primary-btn"
+                          type="button"
+                          onClick={handleContinueToWineCard}
+                          disabled={!hasRequiredLabelShots}
+                        >
+                          Продолжить
+                        </button>
+                      )}
                     </div>
                   </div>
+                  )}
 
+                  {(adminView !== 'create' || createStep === 'form') && (
+                    <>
+                  <div className="field field-wide">
+                    <span>Автозаполнение</span>
+                    <div className="actions-row">
+                      <button className="ghost-btn" type="button" onClick={handleAutofillFromLabel}>
+                        Заполнить из этикетки
+                      </button>
+                    </div>
+                  </div>
                   <label className="field field-wide">
                     <span>Pairings (запятая или новая строка)</span>
                     <textarea name="pairings" rows="3" value={form.pairings} onChange={handleFormChange} />
@@ -2365,18 +2421,32 @@ export default function App() {
                     <span>Gallery URLs (одна ссылка в строке)</span>
                     <textarea name="gallery" rows="4" value={form.gallery} onChange={handleFormChange} />
                   </label>
+                    </>
+                  )}
                 </div>
 
                 <p className={`notice ${notice.type ? `is-${notice.type}` : ''}`}>{notice.text}</p>
 
                 <div className="actions-row">
-                  <button className="primary-btn" type="submit">
-                    Сохранить
-                  </button>
+                  {adminView === 'create' && createStep === 'form' && (
+                    <>
+                      <button className="ghost-btn" type="button" onClick={handleSaveDraft}>
+                        Сохранить драфт
+                      </button>
+                      <button className="primary-btn" type="submit">
+                        Опубликовать
+                      </button>
+                    </>
+                  )}
                   {adminView === 'edit' && (
-                    <button className="ghost-btn" type="button" onClick={handleDeleteWine}>
-                      Удалить
-                    </button>
+                    <>
+                      <button className="primary-btn" type="submit">
+                        Сохранить
+                      </button>
+                      <button className="ghost-btn" type="button" onClick={handleDeleteWine}>
+                        Удалить
+                      </button>
+                    </>
                   )}
                   <button className="ghost-btn" type="button" onClick={handleBackToAdminList}>
                     Назад к списку

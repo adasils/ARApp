@@ -193,6 +193,7 @@ function getMindLatestKey(wineId) {
 function normalizeWine(wine, fallbackIndex = 0) {
   const targetIndex = Number.parseInt(wine?.targetIndex, 10);
   const rating = Number.parseFloat(wine?.rating);
+  const status = String(wine?.status || '').trim().toLowerCase() === 'draft' ? 'draft' : 'published';
 
   return {
     id: String(wine?.id || `wine-${fallbackIndex + 1}`).trim(),
@@ -227,6 +228,7 @@ function normalizeWine(wine, fallbackIndex = 0) {
     qualityNotes: Array.isArray(wine?.qualityNotes)
       ? wine.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
+    status,
     pairings: Array.isArray(wine?.pairings) ? wine.pairings.map((x) => String(x || '').trim()).filter(Boolean) : [],
     gallery: Array.isArray(wine?.gallery) ? wine.gallery.map((x) => String(x || '').trim()).filter(Boolean) : [],
   };
@@ -240,7 +242,8 @@ function validateWine(wine) {
   if (!wine.id) {
     throw new Error('Field "id" is required.');
   }
-  if (!wine.title || !wine.subtitle || !wine.story || !wine.serving) {
+  const isDraft = wine.status === 'draft';
+  if (!isDraft && (!wine.title || !wine.subtitle || !wine.story || !wine.serving)) {
     throw new Error('Required fields: title, subtitle, story, serving.');
   }
   if (!Number.isInteger(wine.targetIndex) || wine.targetIndex < 0) {
