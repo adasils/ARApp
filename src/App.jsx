@@ -11,6 +11,7 @@ const MINDAR_TIMEOUT_MS = 3200;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
+const REQUIRED_LABEL_ROLES = ['front', 'left', 'right'];
 const COMPILE_IMAGE_MAX_SIDE = 1200;
 const COMPILE_IMAGE_QUALITY = 0.82;
 const COMPILE_TIMEOUT_MS = 90000;
@@ -179,6 +180,45 @@ function parseGallery(value) {
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toIdSlug(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function getNextFreeTargetIndex(wines, preferred = 0) {
+  const used = new Set(
+    (wines || [])
+      .map((wine) => Number.parseInt(wine?.targetIndex, 10))
+      .filter((x) => Number.isInteger(x) && x >= 0)
+  );
+  let index = Number.isInteger(preferred) && preferred >= 0 ? preferred : 0;
+  while (used.has(index)) {
+    index += 1;
+  }
+  return index;
+}
+
+function generateWineId({ title, region }, wines, currentId = '') {
+  if (currentId) {
+    return currentId;
+  }
+  const baseRaw = toIdSlug(region) || toIdSlug(title) || 'wine';
+  const taken = new Set((wines || []).map((wine) => String(wine?.id || '')));
+  let seq = 1;
+  while (seq < 1000) {
+    const candidate = `${baseRaw}-${String(seq).padStart(3, '0')}`;
+    if (!taken.has(candidate)) {
+      return candidate;
+    }
+    seq += 1;
+  }
+  return `${baseRaw}-${Date.now()}`;
 }
 
 function estimateBase64Bytes(dataUrl) {
@@ -439,10 +479,10 @@ function getFormFromWine(wine) {
   };
 }
 
-function createEmptyForm(nextIndex = 0) {
+function createEmptyForm() {
   return {
     id: '',
-    targetIndex: String(nextIndex),
+    targetIndex: '',
     title: '',
     subtitle: '',
     producer: '',
@@ -471,14 +511,13 @@ export default function App() {
   const scanHandledRef = useRef(false);
   const modeRef = useRef('home');
   const feedbackTimersRef = useRef([]);
-  const labelPollTimerRef = useRef(null);
   const fallbackTimerRef = useRef(null);
 
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [adminView, setAdminView] = useState('list');
-  const [form, setForm] = useState(createEmptyForm(0));
+  const [form, setForm] = useState(createEmptyForm());
   const [mindTargetSrc, setMindTargetSrc] = useState('');
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
   const [compiledTargetCount, setCompiledTargetCount] = useState(0);
@@ -508,6 +547,7 @@ export default function App() {
   const [adminAuthError, setAdminAuthError] = useState('');
   const [mindBuildStatus, setMindBuildStatus] = useState({ phase: 'idle', progress: 0, text: '' });
   const [arBooted, setArBooted] = useState(false);
+  const [labelWizard, setLabelWizard] = useState({ open: false, step: 0 });
 
   const sortedWines = useMemo(() => {
     return [...wines].sort((a, b) => {
@@ -516,13 +556,6 @@ export default function App() {
       }
       return a.title.localeCompare(b.title, 'ru');
     });
-  }, [wines]);
-
-  const nextTargetIndex = useMemo(() => {
-    if (!wines.length) {
-      return 0;
-    }
-    return wines.reduce((max, wine) => Math.max(max, wine.targetIndex), 0) + 1;
   }, [wines]);
 
   const selectedWine = useMemo(() => {
@@ -692,7 +725,7 @@ export default function App() {
           setSelectedWineId(loaded[0].id);
           setForm(getFormFromWine(loaded[0]));
         } else {
-          setForm(createEmptyForm(0));
+          setForm(createEmptyForm());
         }
       } catch (error) {
         if (active) {
@@ -747,9 +780,6 @@ export default function App() {
   useEffect(() => {
     return () => {
       clearFeedbackTimers();
-      if (labelPollTimerRef.current) {
-        window.clearTimeout(labelPollTimerRef.current);
-      }
       if (fallbackTimerRef.current) {
         window.clearTimeout(fallbackTimerRef.current);
       }
@@ -1097,7 +1127,7 @@ export default function App() {
     }
 
     if (!wines.length) {
-      setForm(createEmptyForm(nextTargetIndex));
+      setForm(createEmptyForm());
     }
   }
 
@@ -1130,7 +1160,7 @@ export default function App() {
 
   function handleNewWine() {
     setSelectedWineId(null);
-    setForm(createEmptyForm(nextTargetIndex));
+    setForm(createEmptyForm());
     setAdminView('create');
     setLabelProcess({
       jobId: null,
@@ -1169,6 +1199,86 @@ export default function App() {
   function handleFormChange(event) {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function getAssetByRole(role, sourceAssets = form.labelAssets) {
+    return normalizeLabelAssets(sourceAssets).find((asset) => asset.role === role) || null;
+  }
+
+  function upsertLabelAsset(nextAsset) {
+    setForm((prev) => {
+      const current = normalizeLabelAssets(prev.labelAssets);
+      const filtered = current.filter((asset) => asset.role !== nextAsset.role && asset.id !== nextAsset.id);
+      const nextAssets = [...filtered, nextAsset];
+      return {
+        ...prev,
+        ...deriveLabelFieldsFromAssets(nextAssets),
+      };
+    });
+  }
+
+  function openLabelWizard(startStep = 0) {
+    setLabelWizard({
+      open: true,
+      step: Math.max(0, Math.min(REQUIRED_LABEL_ROLES.length - 1, startStep)),
+    });
+    setNotice({ text: '', type: '' });
+  }
+
+  function closeLabelWizard() {
+    setLabelWizard({ open: false, step: 0 });
+  }
+
+  function confirmWizardStep() {
+    const role = REQUIRED_LABEL_ROLES[labelWizard.step];
+    const asset = getAssetByRole(role);
+    if (!asset?.dataUrl) {
+      setNotice({ text: `Сначала загрузи и проверь фото для шага ${role}.`, type: 'error' });
+      return;
+    }
+    if (labelWizard.step < REQUIRED_LABEL_ROLES.length - 1) {
+      setLabelWizard((prev) => ({ ...prev, step: prev.step + 1 }));
+      return;
+    }
+    closeLabelWizard();
+    setNotice({ text: 'Обязательные ракурсы загружены: front/left/right.', type: 'success' });
+  }
+
+  function goWizardBack() {
+    setLabelWizard((prev) => ({ ...prev, step: Math.max(0, prev.step - 1) }));
+  }
+
+  async function handleWizardRoleUpload(event) {
+    const file = Array.from(event.target.files || [])[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+    const role = REQUIRED_LABEL_ROLES[labelWizard.step];
+    try {
+      const optimized = await optimizeLabelImage(file);
+      const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
+      const quality = await assessLabelQuality(optimized.dataUrl);
+      const nextAsset = {
+        id: crypto.randomUUID(),
+        role,
+        dataUrl: optimized.dataUrl,
+        qualityScore: quality.score,
+        qualityStatus: quality.status,
+        qualityNotes: quality.notes,
+        visualEmbedding,
+      };
+      upsertLabelAsset(nextAsset);
+      openCropEditor(nextAsset.id);
+      setLabelProcess({
+        jobId: null,
+        status: 'idle',
+        targetIndex: null,
+        error: '',
+      });
+    } catch (error) {
+      setNotice({ text: error.message || 'Не удалось загрузить фото для шага.', type: 'error' });
+    }
   }
 
   async function handleLabelImageUpload(event) {
@@ -1232,21 +1342,6 @@ export default function App() {
       labelAssets: [],
       ...deriveLabelFieldsFromAssets([]),
     }));
-    setLabelProcess({
-      jobId: null,
-      status: 'idle',
-      targetIndex: null,
-      error: '',
-    });
-  }
-
-  function handleLabelRoleChange(assetId, role) {
-    setForm((prev) => {
-      const nextAssets = normalizeLabelAssets(prev.labelAssets).map((asset) => (
-        asset.id === assetId ? { ...asset, role } : asset
-      ));
-      return { ...prev, ...deriveLabelFieldsFromAssets(nextAssets) };
-    });
     setLabelProcess({
       jobId: null,
       status: 'idle',
@@ -1344,7 +1439,7 @@ export default function App() {
     const assets = normalizeLabelAssets(form.labelAssets);
     const primary = pickPrimaryAsset(assets);
     const roles = new Set(assets.map((asset) => asset.role));
-    const hasRequired = ['front', 'left', 'right'].every((role) => roles.has(role));
+    const hasRequired = REQUIRED_LABEL_ROLES.every((role) => roles.has(role));
 
     if (!assets.length || !primary?.dataUrl) {
       setNotice({ text: 'Сначала загрузи фото этикеток (минимум front/left/right).', type: 'error' });
@@ -1364,14 +1459,15 @@ export default function App() {
       setLabelProcess({
         jobId: null,
         status: 'processing',
-        targetIndex: Number.parseInt(form.targetIndex, 10),
+        targetIndex: Number.parseInt(form.targetIndex, 10) || getNextFreeTargetIndex(wines),
         error: '',
       });
 
-      const draftWineId = normalizeString(form.id) || selectedWineId;
-      if (!draftWineId) {
-        throw new Error('Укажи ID вина перед обработкой этикетки.');
-      }
+      const draftWineId = generateWineId(
+        { title: form.title, region: form.region || form.subtitle },
+        wines.filter((wine) => wine.id !== selectedWineId),
+        normalizeString(selectedWineId || form.id)
+      );
 
       const draftWine = {
         id: draftWineId,
@@ -1496,8 +1592,18 @@ export default function App() {
   }
 
   function normalizeFormWine() {
-    const id = normalizeString(form.id);
-    const targetIndex = Number.parseInt(form.targetIndex, 10);
+    const existingWine = selectedWineId ? wines.find((item) => item.id === selectedWineId) : null;
+    const id = generateWineId(
+      { title: form.title, region: form.region || form.subtitle },
+      wines.filter((item) => item.id !== selectedWineId),
+      normalizeString(existingWine?.id || form.id || selectedWineId || '')
+    );
+    const targetIndexRaw = Number.parseInt(form.targetIndex, 10);
+    const targetIndex = Number.isInteger(targetIndexRaw) && targetIndexRaw >= 0
+      ? targetIndexRaw
+      : Number.isInteger(existingWine?.targetIndex)
+        ? existingWine.targetIndex
+        : getNextFreeTargetIndex(wines);
     const title = normalizeString(form.title);
     const subtitle = normalizeString(form.subtitle);
     const producer = normalizeString(form.producer);
@@ -1508,14 +1614,6 @@ export default function App() {
     const story = normalizeString(form.story);
     const serving = normalizeString(form.serving);
     const rating = Number.parseFloat(form.rating);
-
-    if (!id) {
-      throw new Error('Укажи уникальный ID вина.');
-    }
-
-    if (!Number.isInteger(targetIndex) || targetIndex < 0) {
-      throw new Error('Target Index должен быть целым числом 0 или больше.');
-    }
 
     if (!title || !subtitle || !story || !serving) {
       throw new Error('Заполни заголовок, подзаголовок, историю и подачу.');
@@ -1572,7 +1670,7 @@ export default function App() {
         (item) => item.targetIndex === wine.targetIndex && item.id !== selectedWineId
       );
       if (duplicateTarget) {
-        throw new Error('Этот Target Index уже занят другим вином.');
+        throw new Error('Системный индекс уже занят. Измени регион/название и попробуй снова.');
       }
 
       let nextWines;
@@ -1610,7 +1708,7 @@ export default function App() {
 
     if (!nextWines.length) {
       setSelectedWineId(null);
-      setForm(createEmptyForm(0));
+      setForm(createEmptyForm());
       setAdminView('list');
       setNotice({ text: 'Карточка удалена. Добавь новое вино.', type: 'success' });
       return;
@@ -1869,8 +1967,6 @@ export default function App() {
                   <p><strong>Год:</strong> {selectedWine.year || '—'}</p>
                   <p><strong>Сорта:</strong> {selectedWine.grapes || '—'}</p>
                   <p><strong>Рейтинг:</strong> {selectedWine.rating.toFixed(1)} / 5</p>
-                  <p><strong>Target Index:</strong> {selectedWine.targetIndex}</p>
-                  <p><strong>ID:</strong> {selectedWine.id}</p>
                   <p><strong>Подача:</strong> {selectedWine.serving}</p>
                   <p className="detail-wide"><strong>Описание:</strong> {selectedWine.description || '—'}</p>
                   <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
@@ -1900,23 +1996,9 @@ export default function App() {
             {(adminView === 'edit' || adminView === 'create') && (
               <form className="admin-form" onSubmit={handleSaveWine}>
                 <div className="form-grid">
-                  <label className="field">
-                    <span>ID вина</span>
-                    <input name="id" value={form.id} onChange={handleFormChange} placeholder="wine-barolo-001" required />
-                  </label>
-
-                  <label className="field">
-                    <span>Target Index</span>
-                    <input
-                      name="targetIndex"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={form.targetIndex}
-                      onChange={handleFormChange}
-                      required
-                    />
-                  </label>
+                  <p className="field-note field-wide">
+                    ID и target index назначаются автоматически при сохранении.
+                  </p>
 
                   <label className="field">
                     <span>Рейтинг (0-5)</span>
@@ -1978,11 +2060,10 @@ export default function App() {
                   </label>
 
                   <div className="field field-wide">
-                    <span>Этикетки (front/left/right обязательны)</span>
+                    <span>Этикетки (мастер: front → left → right)</span>
                     <div className="label-upload-row">
-                      <input type="file" accept="image/*" multiple onChange={handleLabelImageUpload} />
-                      <button className="primary-btn" type="button" onClick={handleProcessLabel}>
-                        Обработать этикетку
+                      <button className="primary-btn" type="button" onClick={() => openLabelWizard(0)}>
+                        Открыть мастер этикеток
                       </button>
                       {!!form.labelAssets?.length && (
                         <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
@@ -1990,21 +2071,45 @@ export default function App() {
                         </button>
                       )}
                     </div>
+                    <div className="wizard-status-row">
+                      {REQUIRED_LABEL_ROLES.map((role, index) => {
+                        const asset = getAssetByRole(role);
+                        return (
+                          <button
+                            key={role}
+                            type="button"
+                            className={`wizard-pill ${asset?.dataUrl ? 'is-done' : ''}`}
+                            onClick={() => openLabelWizard(index)}
+                          >
+                            {asset?.dataUrl ? '✅' : '○'} {role}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {labelWizard.open && (
+                      <div className="wizard-box">
+                        <p className="field-note">
+                          Шаг {labelWizard.step + 1} из {REQUIRED_LABEL_ROLES.length}: загрузи ракурс <strong>{REQUIRED_LABEL_ROLES[labelWizard.step]}</strong>, затем при необходимости обрежь.
+                        </p>
+                        <div className="label-upload-row">
+                          <input type="file" accept="image/*" onChange={handleWizardRoleUpload} />
+                          <button className="ghost-btn" type="button" onClick={goWizardBack} disabled={labelWizard.step === 0}>
+                            Назад
+                          </button>
+                          <button className="primary-btn" type="button" onClick={confirmWizardStep}>
+                            {labelWizard.step === REQUIRED_LABEL_ROLES.length - 1 ? 'Завершить' : 'Далее'}
+                          </button>
+                          <button className="ghost-btn" type="button" onClick={closeLabelWizard}>
+                            Закрыть
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {!!form.labelAssets?.length && (
                       <div className="wine-grid">
                         {form.labelAssets.map((asset) => (
                           <div key={asset.id} className="wine-card">
-                            <div className="field">
-                              <span>Роль</span>
-                              <select
-                                value={asset.role}
-                                onChange={(event) => handleLabelRoleChange(asset.id, event.target.value)}
-                              >
-                                {LABEL_ROLES.map((role) => (
-                                  <option key={role} value={role}>{role}</option>
-                                ))}
-                              </select>
-                            </div>
+                            <p className="field-note"><strong>{asset.role || 'alt'}</strong></p>
                             <img className="label-preview" src={asset.dataUrl} alt={`Этикетка ${asset.role}`} />
                             <p className="field-note">
                               {asset.qualityStatus === 'good' && `✅ ${asset.qualityScore}/100`}
@@ -2014,16 +2119,22 @@ export default function App() {
                             </p>
                             <div className="actions-row">
                               <button className="ghost-btn" type="button" onClick={() => openCropEditor(asset.id)}>
-                                Crop
+                                Обрезать
                               </button>
-                              <button className="ghost-btn" type="button" onClick={() => handleRemoveLabelAsset(asset.id)}>
-                                Удалить
-                              </button>
+                              {!REQUIRED_LABEL_ROLES.includes(asset.role) && (
+                                <button className="ghost-btn" type="button" onClick={() => handleRemoveLabelAsset(asset.id)}>
+                                  Удалить
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
+                    <div className="label-upload-row">
+                      <input type="file" accept="image/*" multiple onChange={handleLabelImageUpload} />
+                      <span className="field-note">Опционально: добавь `closeup`/`alt` фото для fallback.</span>
+                    </div>
                     {selectedCropAsset && (
                       <div className="detail-grid">
                         <p className="detail-wide"><strong>Crop editor:</strong> {selectedCropAsset.role}</p>
@@ -2104,8 +2215,7 @@ export default function App() {
                     {labelProcess.status !== 'idle' && (
                       <p className={`field-note process-note is-${labelProcess.status}`}>
                         {labelProcess.status === 'processing' && 'Обрабатываем изображение...'}
-                        {labelProcess.status === 'ready' &&
-                          `Готово. Назначен targetIndex: ${labelProcess.targetIndex}.`}
+                        {labelProcess.status === 'ready' && 'Готово. Этикетка подготовлена для сохранения.'}
                         {labelProcess.status === 'error' &&
                           `Ошибка: ${labelProcess.error || 'Не удалось обработать.'}`}
                       </p>
@@ -2122,8 +2232,13 @@ export default function App() {
                       </p>
                     )}
                     <p className="field-note">
-                      Для текущей сборки target используется роль `front`, но visual fallback использует все загруженные ракурсы.
+                      После front/left/right нажми «Обработать этикетку», затем «Сохранить».
                     </p>
+                    <div className="actions-row">
+                      <button className="primary-btn" type="button" onClick={handleProcessLabel}>
+                        Обработать этикетку
+                      </button>
+                    </div>
                   </div>
 
                   <label className="field field-wide">

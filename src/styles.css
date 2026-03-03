@@ -682,6 +682,38 @@ h2 {
   align-items: center;
 }
 
+.wizard-status-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.wizard-pill {
+  border: 1px solid rgba(186, 213, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(18, 28, 47, 0.48);
+  color: var(--text-muted);
+  padding: 6px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.wizard-pill.is-done {
+  color: var(--text-strong);
+  border-color: rgba(112, 217, 160, 0.6);
+}
+
+.wizard-box {
+  margin-top: 10px;
+  border: 1px solid rgba(182, 211, 255, 0.26);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(200, 224, 255, 0.14), rgba(17, 28, 47, 0.52));
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
 .label-upload-row input[type='file'] {
   max-width: 100%;
 }
