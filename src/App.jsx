@@ -51,6 +51,14 @@ function normalizeArray(value) {
   return value.map((item) => String(item || '').trim()).filter(Boolean);
 }
 
+function clampPercent(value, fallback = 50) {
+  const num = Number.parseInt(value, 10);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return Math.min(100, Math.max(0, num));
+}
+
 function normalizeLabelAsset(asset, fallbackIndex = 0) {
   const role = normalizeString(asset?.role) || LABEL_ROLES[Math.min(fallbackIndex, LABEL_ROLES.length - 1)];
   const qualityScore = Number.parseInt(asset?.qualityScore, 10);
@@ -133,9 +141,16 @@ function normalizeWine(wine, fallbackIndex) {
     region: normalizeString(wine?.region),
     year: normalizeString(wine?.year),
     grapes: normalizeString(wine?.grapes),
+    estateClass: normalizeString(wine?.estateClass),
     description: normalizeString(wine?.description),
     story: normalizeString(wine?.story),
     serving: normalizeString(wine?.serving),
+    abv: normalizeString(wine?.abv),
+    inventory: normalizeString(wine?.inventory),
+    body: clampPercent(wine?.body, 50),
+    tannins: clampPercent(wine?.tannins, 50),
+    acidity: clampPercent(wine?.acidity, 50),
+    palateNotes: normalizeArray(wine?.palateNotes),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0,
     labelAssets,
     labelImage: derived.labelImage || fallbackLabelImage,
@@ -558,9 +573,16 @@ function getFormFromWine(wine) {
     region: wine?.region || '',
     year: wine?.year || '',
     grapes: wine?.grapes || '',
+    estateClass: wine?.estateClass || '',
     description: wine?.description || '',
     story: wine?.story || '',
     serving: wine?.serving || '',
+    abv: wine?.abv || '',
+    inventory: wine?.inventory || '',
+    body: String(clampPercent(wine?.body, 50)),
+    tannins: String(clampPercent(wine?.tannins, 50)),
+    acidity: String(clampPercent(wine?.acidity, 50)),
+    palateNotes: wine?.palateNotes?.join('\n') || '',
     rating: wine ? String(wine.rating ?? 0) : '0',
     labelImage: derived.labelImage || wine?.labelImage || '',
     labelAssets: derived.labelAssets.length ? derived.labelAssets : normalizeLabelAssets(wine?.labelAssets),
@@ -590,9 +612,16 @@ function createEmptyForm() {
     region: '',
     year: '',
     grapes: '',
+    estateClass: '',
     description: '',
     story: '',
     serving: '',
+    abv: '',
+    inventory: '',
+    body: '50',
+    tannins: '50',
+    acidity: '50',
+    palateNotes: '',
     rating: '0',
     labelImage: '',
     labelAssets: [],
@@ -1920,9 +1949,15 @@ export default function App() {
     const region = normalizeString(form.region);
     const year = normalizeString(form.year);
     const grapes = normalizeString(form.grapes);
+    const estateClass = normalizeString(form.estateClass);
     const description = normalizeString(form.description);
     const story = normalizeString(form.story);
     const serving = normalizeString(form.serving);
+    const abv = normalizeString(form.abv);
+    const inventory = normalizeString(form.inventory);
+    const body = clampPercent(form.body, 50);
+    const tannins = clampPercent(form.tannins, 50);
+    const acidity = clampPercent(form.acidity, 50);
     const rating = Number.parseFloat(form.rating);
 
     if (!asDraft && (!title || !story || !serving)) {
@@ -1946,9 +1981,15 @@ export default function App() {
       region,
       year,
       grapes,
+      estateClass,
       description,
       story,
       serving,
+      abv,
+      inventory,
+      body,
+      tannins,
+      acidity,
       rating: Number(rating.toFixed(1)),
       labelImage: normalizeString(form.labelImage),
       visualEmbedding: Array.isArray(form.visualEmbedding)
@@ -1959,6 +2000,7 @@ export default function App() {
       qualityNotes: Array.isArray(form.qualityNotes) ? form.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean) : [],
       labelAssets: normalizeLabelAssets(form.labelAssets),
       status: asDraft ? 'draft' : 'published',
+      palateNotes: parseTags(form.palateNotes),
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
@@ -2332,35 +2374,66 @@ export default function App() {
             )}
 
             {adminView === 'detail' && selectedWine && (
-              <div className="admin-detail">
-                <div className="detail-grid">
-                  <p><strong>Наименование:</strong> {selectedWine.title}</p>
-                  <p><strong>Производитель:</strong> {selectedWine.producer || '—'}</p>
-                  <p><strong>Апелласьон/регион:</strong> {selectedWine.region || '—'}</p>
-                  <p><strong>Год:</strong> {selectedWine.year || '—'}</p>
-                  <p><strong>Сорта:</strong> {selectedWine.grapes || '—'}</p>
-                  <p><strong>Рейтинг:</strong> {selectedWine.rating.toFixed(1)} / 5</p>
-                  <p><strong>Подача:</strong> {selectedWine.serving}</p>
-                  <p className="detail-wide"><strong>Описание:</strong> {selectedWine.description || '—'}</p>
-                  <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
-                  {!!selectedWine.labelAssets?.length && (
-                    <p className="detail-wide">
-                      <strong>Этикетки:</strong>
-                      {selectedWine.labelAssets.map((asset) => (
-                        <img key={asset.id} className="label-preview" src={asset.dataUrl} alt={`${selectedWine.title} ${asset.role}`} />
-                      ))}
-                    </p>
-                  )}
-                  <p className="detail-wide"><strong>Pairings:</strong> {selectedWine.pairings.join(', ') || '—'}</p>
-                  <p className="detail-wide"><strong>Gallery:</strong> {selectedWine.gallery.length} изображений</p>
+              <div className="admin-detail wine-record-detail">
+                <div className="detail-hero">
+                  {(() => {
+                    const front = normalizeLabelAssets(selectedWine.labelAssets).find((asset) => asset.role === 'front');
+                    return front?.dataUrl ? (
+                      <img src={front.dataUrl} alt={selectedWine.title} />
+                    ) : (
+                      <div className="detail-hero-empty">No label image</div>
+                    );
+                  })()}
+                  <span className="detail-badge">{selectedWine.estateClass || 'Premium Estate'}</span>
+                </div>
+
+                <div className="detail-title-block">
+                  <p className="detail-subhead">{selectedWine.producer || 'Winery'}</p>
+                  <h3>{selectedWine.title}</h3>
+                  <p className="detail-location">{selectedWine.region || 'Region'}{selectedWine.year ? `, ${selectedWine.year}` : ''}</p>
+                </div>
+
+                <div className="detail-metrics-grid">
+                  <div><span>Vintage</span><strong>{selectedWine.year || '—'}</strong></div>
+                  <div><span>Rating</span><strong>{Math.round((selectedWine.rating || 0) * 20)} pts</strong></div>
+                  <div><span>ABV</span><strong>{selectedWine.abv || '—'}</strong></div>
+                  <div><span>Inventory</span><strong>{selectedWine.inventory || '—'}</strong></div>
+                </div>
+
+                <div className="detail-profile">
+                  <h4>Profile Characteristics</h4>
+                  <div className="profile-line"><span>Body</span><div><i style={{ width: `${selectedWine.body ?? 50}%` }} /></div><b>{selectedWine.body ?? 50}%</b></div>
+                  <div className="profile-line"><span>Tannins</span><div><i style={{ width: `${selectedWine.tannins ?? 50}%` }} /></div><b>{selectedWine.tannins ?? 50}%</b></div>
+                  <div className="profile-line"><span>Acidity</span><div><i style={{ width: `${selectedWine.acidity ?? 50}%` }} /></div><b>{selectedWine.acidity ?? 50}%</b></div>
+                </div>
+
+                <div className="detail-notes">
+                  <h4>Palate Notes & Sensory Profile</h4>
+                  <div className="chips-wrap">
+                    {(selectedWine.palateNotes?.length ? selectedWine.palateNotes : selectedWine.pairings).map((item) => (
+                      <span key={item} className="chip">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="detail-story">
+                  <h4>The Story</h4>
+                  <p>{selectedWine.story || selectedWine.description || '—'}</p>
+                </div>
+
+                <div className="detail-tip-card">
+                  <h4>Sommelier Tip</h4>
+                  <p>{selectedWine.serving || '—'}</p>
                 </div>
 
                 <div className="actions-row">
                   <button className="primary-btn" onClick={handleEditSelectedWine}>
-                    Редактировать
+                    Edit Record
                   </button>
                   <button className="ghost-btn" onClick={handleBackToAdminList}>
-                    Назад к списку
+                    Back
                   </button>
                 </div>
               </div>
@@ -2423,6 +2496,36 @@ export default function App() {
                   <label className="field">
                     <span>Grapes</span>
                     <input name="grapes" value={form.grapes} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field field-wide">
+                    <span>Estate Class</span>
+                    <input name="estateClass" value={form.estateClass} onChange={handleFormChange} placeholder="Premium Estate" />
+                  </label>
+
+                  <label className="field">
+                    <span>ABV</span>
+                    <input name="abv" value={form.abv} onChange={handleFormChange} placeholder="13.5%" />
+                  </label>
+
+                  <label className="field">
+                    <span>Inventory</span>
+                    <input name="inventory" value={form.inventory} onChange={handleFormChange} placeholder="12 units" />
+                  </label>
+
+                  <label className="field field-wide profile-field">
+                    <span>Body ({form.body}%)</span>
+                    <input name="body" type="range" min="0" max="100" value={form.body} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field field-wide profile-field">
+                    <span>Tannins ({form.tannins}%)</span>
+                    <input name="tannins" type="range" min="0" max="100" value={form.tannins} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field field-wide profile-field">
+                    <span>Acidity ({form.acidity}%)</span>
+                    <input name="acidity" type="range" min="0" max="100" value={form.acidity} onChange={handleFormChange} />
                   </label>
 
                   <label className="field field-wide">
@@ -2550,6 +2653,11 @@ export default function App() {
                   <label className="field field-wide">
                     <span>Sensory map tags (запятая или новая строка)</span>
                     <textarea name="pairings" rows="3" value={form.pairings} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field field-wide">
+                    <span>Palate Notes (запятая или новая строка)</span>
+                    <textarea name="palateNotes" rows="3" value={form.palateNotes} onChange={handleFormChange} />
                   </label>
 
                   <label className="field field-wide">

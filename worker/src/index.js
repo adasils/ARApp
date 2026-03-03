@@ -194,6 +194,13 @@ function normalizeWine(wine, fallbackIndex = 0) {
   const targetIndex = Number.parseInt(wine?.targetIndex, 10);
   const rating = Number.parseFloat(wine?.rating);
   const status = String(wine?.status || '').trim().toLowerCase() === 'draft' ? 'draft' : 'published';
+  const clampPercent = (value, fallback = 50) => {
+    const num = Number.parseInt(value, 10);
+    if (!Number.isFinite(num)) {
+      return fallback;
+    }
+    return Math.min(100, Math.max(0, num));
+  };
 
   return {
     id: String(wine?.id || `wine-${fallbackIndex + 1}`).trim(),
@@ -206,7 +213,13 @@ function normalizeWine(wine, fallbackIndex = 0) {
     region: String(wine?.region || '').trim(),
     year: String(wine?.year || '').trim(),
     grapes: String(wine?.grapes || '').trim(),
+    estateClass: String(wine?.estateClass || '').trim(),
     description: String(wine?.description || '').trim(),
+    abv: String(wine?.abv || '').trim(),
+    inventory: String(wine?.inventory || '').trim(),
+    body: clampPercent(wine?.body, 50),
+    tannins: clampPercent(wine?.tannins, 50),
+    acidity: clampPercent(wine?.acidity, 50),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, Number(rating.toFixed(1)))) : 0,
     labelImage: String(wine?.labelImage || '').trim(),
     labelAssets: Array.isArray(wine?.labelAssets)
@@ -229,6 +242,7 @@ function normalizeWine(wine, fallbackIndex = 0) {
       ? wine.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
       : [],
     status,
+    palateNotes: Array.isArray(wine?.palateNotes) ? wine.palateNotes.map((x) => String(x || '').trim()).filter(Boolean) : [],
     pairings: Array.isArray(wine?.pairings) ? wine.pairings.map((x) => String(x || '').trim()).filter(Boolean) : [],
     gallery: Array.isArray(wine?.gallery) ? wine.gallery.map((x) => String(x || '').trim()).filter(Boolean) : [],
   };
