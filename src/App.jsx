@@ -208,9 +208,22 @@ function extractPrefillFromOcr(rawText, ocrLines = []) {
   const grapesRegex = new RegExp(grapesDictionary.map((item) => item.replace(/\s+/g, '\\s+')).join('|'), 'i');
   const regionRegex = new RegExp(regions.join('|'), 'i');
   const toNormalizedLine = (line) => String(line || '').replace(/\s+/g, ' ').trim();
+  const hasEnoughLetters = (line) => (String(line || '').match(/[a-zа-яё]/gi) || []).length >= 3;
+  const isMostlyNumeric = (line) => {
+    const compactLine = String(line || '').replace(/\s+/g, '');
+    if (!compactLine) {
+      return true;
+    }
+    const digits = (compactLine.match(/\d/g) || []).length;
+    return /^\d+$/.test(compactLine) || digits / compactLine.length >= 0.6;
+  };
+  const isValidTextCandidate = (line) => {
+    const value = toNormalizedLine(line);
+    return value.length >= 3 && hasEnoughLetters(value) && !isMostlyNumeric(value);
+  };
   const cleanedLines = lines
     .map((line) => toNormalizedLine(line))
-    .filter((line) => line.length >= 3)
+    .filter((line) => isValidTextCandidate(line))
     .filter((line) => !skipHints.test(line))
     .filter((line) => !grapesRegex.test(line))
     .filter((line) => !regionRegex.test(line));
@@ -221,26 +234,11 @@ function extractPrefillFromOcr(rawText, ocrLines = []) {
         minTop: Number.parseFloat(line?.minTop ?? line?.MinTop ?? 0) || 0,
         maxHeight: Number.parseFloat(line?.maxHeight ?? line?.MaxHeight ?? 0) || 0,
       }))
-      .filter((line) => line.text.length >= 3)
+      .filter((line) => isValidTextCandidate(line.text))
       .filter((line) => !skipHints.test(line.text))
       .filter((line) => !grapesRegex.test(line.text))
       .filter((line) => !regionRegex.test(line.text))
     : [];
-
-  let producerCandidate = cleanedLines.find((line) => producerHints.test(line)) || '';
-  if (!producerCandidate && normalizedOverlayLines.length) {
-    const sortedByTop = [...normalizedOverlayLines].sort((a, b) => a.minTop - b.minTop);
-    const topLimit = sortedByTop[0].minTop + Math.max(60, sortedByTop[0].maxHeight * 2.5);
-    const topLines = sortedByTop.filter((line) => line.minTop <= topLimit);
-    producerCandidate = topLines.find((line) => producerHints.test(line.text))?.text || '';
-  }
-  if (!producerCandidate) {
-    const longCandidates = cleanedLines.filter((line) => line.length >= 8);
-    producerCandidate = longCandidates.slice(1).find(Boolean) || longCandidates[0] || '';
-  }
-  if (producerCandidate && producerCandidate === cleanedLines[0] && cleanedLines.length > 1) {
-    producerCandidate = cleanedLines[1];
-  }
 
   let titleCandidate = cleanedLines[0] || '';
   if (normalizedOverlayLines.length) {
@@ -254,8 +252,24 @@ function extractPrefillFromOcr(rawText, ocrLines = []) {
       });
     titleCandidate = rankedByVisualSize[0]?.text || titleCandidate;
   }
-  if (titleCandidate && producerCandidate && titleCandidate === producerCandidate) {
+  let producerCandidate = cleanedLines.find((line) => producerHints.test(line)) || '';
+  if (!producerCandidate && normalizedOverlayLines.length) {
+    const sortedByTop = [...normalizedOverlayLines].sort((a, b) => a.minTop - b.minTop);
+    const topLimit = sortedByTop[0].minTop + Math.max(70, sortedByTop[0].maxHeight * 3);
+    const topLines = sortedByTop.filter((line) => line.minTop <= topLimit);
+    producerCandidate = topLines.find((line) => producerHints.test(line.text))?.text || '';
+    if (!producerCandidate && titleCandidate) {
+      const titleLine = sortedByTop.find((line) => line.text === titleCandidate);
+      if (titleLine) {
+        producerCandidate = sortedByTop
+          .find((line) => line.minTop < titleLine.minTop && line.text !== titleCandidate)
+          ?.text || '';
+      }
+    }
+  }
+  if (producerCandidate === titleCandidate) {
     titleCandidate = cleanedLines.find((line) => line !== producerCandidate) || titleCandidate;
+    producerCandidate = '';
   }
 
   return {
