@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, ChevronRight, LayoutGrid, ScanLine, Search, Settings, Wine } from 'lucide-react';
+import { Archive, BarChart3, Camera, ChevronRight, History, House, ImageIcon, LayoutGrid, RotateCcw, ScanLine, Search, Settings, User, Wine, X, Zap } from 'lucide-react';
 import { apiFetch, getApiBaseUrl } from './lib/api.js';
 import { sha256HexFromArrayBuffer } from './lib/hash.js';
 
@@ -239,6 +239,18 @@ function NoteSolidIcon({ type }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 2L14.9 8.1L21.5 9L16.7 13.6L17.8 20.2L12 17L6.2 20.2L7.3 13.6L2.5 9L9.1 8.1L12 2Z" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="18" cy="5" r="2.2" />
+      <circle cx="6" cy="12" r="2.2" />
+      <circle cx="18" cy="19" r="2.2" />
+      <path d="M8 11L16 6.2" />
+      <path d="M8 13L16 17.8" />
     </svg>
   );
 }
@@ -750,6 +762,23 @@ export default function App() {
   const selectedWine = useMemo(() => {
     return wines.find((wine) => wine.id === selectedWineId) || null;
   }, [wines, selectedWineId]);
+
+  const curatedWines = useMemo(() => {
+    const published = sortedWines.filter((wine) => wine.status !== 'draft');
+    return (published.length ? published : sortedWines).slice(0, 4);
+  }, [sortedWines]);
+
+  const featuredWine = useMemo(() => {
+    return curatedWines[0] || null;
+  }, [curatedWines]);
+
+  const scanProgress = useMemo(() => {
+    if (recognitionPhase === 'MINDAR_LOCKED') return 100;
+    if (recognitionPhase === 'FALLBACK_VISUAL') return 86;
+    if (recognitionPhase === 'FALLBACK_OCR') return 68;
+    if (recognitionPhase === 'NOT_FOUND') return 100;
+    return 42;
+  }, [recognitionPhase]);
 
   const visibleAdminWines = useMemo(() => {
     const query = normalizeString(adminSearch).toLowerCase();
@@ -2180,53 +2209,127 @@ export default function App() {
         className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''} ${mode === 'admin' ? 'is-admin' : ''} ${mode === 'content' ? 'is-content' : ''}`}
       >
         {mode === 'home' && (
-          <section className="home-screen">
-            <div className="home-abstract" aria-hidden="true"></div>
-            <div
-              className="home-pattern"
-              aria-hidden="true"
-              style={{ backgroundImage: `url(${WINE_PATTERN_IMAGE})` }}
-            ></div>
-            <div className="home-center">
-              <div className="home-card">
-                <p className="eyebrow">AR Scanning</p>
-                <h1>Сканируй этикетки и показывай историю вина</h1>
-                <p className="lead">
-                  Запусти камеру, наведи на этикетку и покажи карточку с контентом.
-                </p>
-                {!compiledTargetsReady && (
-                  <p className="field-note">
-                    Новые этикетки появятся в сканере после фоновой компиляции target-файла (обычно до 5 минут).
-                  </p>
-                )}
-                {startError && <p className="notice is-error">{startError}</p>}
-                <div className="actions-row">
-                  <button className="primary-btn" onClick={handleStartScan}>
-                    Начать сканирование
-                  </button>
+          <section className="home-screen vinoria-home">
+            <div className="vinoria-home-bg" aria-hidden="true" style={{ backgroundImage: `url(${WINE_PATTERN_IMAGE})` }} />
+            <div className="vinoria-surface">
+              <header className="vinoria-topbar">
+                <div className="vinoria-brand">
+                  <span className="vinoria-brand-mark"><Wine size={19} /></span>
+                  <span>VINORIA APP</span>
                 </div>
+                <div className="vinoria-top-actions">
+                  <button type="button" className="vinoria-icon-btn" aria-label="Search"><Search size={19} /></button>
+                  <button type="button" className="vinoria-icon-btn" aria-label="Profile" onClick={openAdmin}><User size={19} /></button>
+                </div>
+              </header>
+
+              <article className="vinoria-hero">
+                <div className="vinoria-hero-image">
+                  {featuredWine?.labelImage ? <img src={featuredWine.labelImage} alt={featuredWine.title} /> : null}
+                </div>
+                <div className="vinoria-hero-overlay">
+                  <h1>Explore Vinoria App</h1>
+                  <p>Unveil the heritage and hidden notes of every bottle in your collection.</p>
+                </div>
+              </article>
+
+              <section className="vinoria-section">
+                <div className="vinoria-section-head">
+                  <h3>Curated Vintages</h3>
+                  <button type="button" className="vinoria-link-btn">View All</button>
+                </div>
+                <div className="vinoria-cards-row">
+                  {curatedWines.slice(0, 2).map((wine) => (
+                    <button
+                      key={wine.id}
+                      className="vinoria-vintage-card"
+                      type="button"
+                      onClick={() => {
+                        setContentWine(wine);
+                        setMode('content');
+                      }}
+                    >
+                      <div className="vinoria-vintage-image">
+                        {wine.labelImage ? <img src={wine.labelImage} alt={wine.title} /> : null}
+                        <span>{Math.round((wine.rating || 0) * 20)} PTS</span>
+                      </div>
+                      <p className="vinoria-vintage-region">{(wine.region || 'Cellar').toUpperCase()}</p>
+                      <p className="vinoria-vintage-title">{wine.title || wine.id} {wine.year}</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="vinoria-sommelier-card">
+                <div className="vinoria-spark">✦</div>
+                <div>
+                  <h4>Personalized Sommelier</h4>
+                  <p>Answer 3 questions to find your perfect match.</p>
+                </div>
+                <ChevronRight size={20} />
+              </section>
+
+              {startError && <p className="notice is-error">{startError}</p>}
+              {!compiledTargetsReady && (
+                <p className="vinoria-note">New labels appear after background compilation (usually up to 5 min).</p>
+              )}
+
+              <button className="vinoria-scan-cta" onClick={handleStartScan}>
+                <Camera size={20} />
+                <span>SCAN WINE LABEL</span>
+              </button>
+
+              <nav className="vinoria-bottom-nav" aria-label="Main">
+                <button type="button" className="is-active"><House size={18} /><span>Home</span></button>
+                <button type="button"><Archive size={18} /><span>Cellar</span></button>
+                <button type="button"><History size={18} /><span>History</span></button>
+                <button type="button" onClick={openAdmin}><User size={18} /><span>Profile</span></button>
+              </nav>
+
+              <div className="vinoria-admin-link-wrap">
+                <button className="admin-link" onClick={openAdmin}>Перейти в админку</button>
               </div>
             </div>
-
-            <footer className="entry-footer home-footer">
-              <button className="admin-link" onClick={openAdmin}>
-                Перейти в админку
-              </button>
-              <p className="copyright">VineLabs 2026</p>
-            </footer>
           </section>
         )}
 
         {mode === 'scan' && (
-          <section className="scanner-panel scan-panel-hud">
-            <div className="scan-state">
-              <div className="scan-toolbar">
-                <button className="ghost-btn" onClick={handleStopScan}>
-                  Отмена
-                </button>
+          <section className="scanner-panel scan-panel-hud vinoria-scan-screen">
+            <div className="vinoria-scan-overlay">
+              <div className="vinoria-scan-top">
+                <button className="vinoria-icon-btn" onClick={handleStopScan}><X size={22} /></button>
+                <p>VINORIA APP</p>
+                <button className="vinoria-icon-btn"><RotateCcw size={20} /></button>
               </div>
-              <p className="scan-pill">{recognitionHint || 'Наведи камеру на этикетку'}</p>
-              <div className="scanner-frame" aria-hidden="true"></div>
+
+              <div className="vinoria-target-frame" aria-hidden="true">
+                <div className="vinoria-target-corners" />
+              </div>
+
+              <div className="vinoria-scan-status">
+                <h2>Scanning for Vinoria App...</h2>
+                <p>{recognitionHint || 'Authenticity check in progress'}</p>
+                <div className="vinoria-progress-head">
+                  <span>SEQUENCING</span>
+                  <strong>{scanProgress}%</strong>
+                </div>
+                <div className="vinoria-progress-track">
+                  <div className="vinoria-progress-fill" style={{ width: `${scanProgress}%` }} />
+                </div>
+              </div>
+
+              <div className="vinoria-scan-actions">
+                <button type="button"><Zap size={20} /><span>FLASH</span></button>
+                <button type="button" className="is-main"><Camera size={24} /></button>
+                <button type="button"><ImageIcon size={20} /><span>GALLERY</span></button>
+              </div>
+
+              <nav className="vinoria-bottom-nav is-scan">
+                <button type="button"><Archive size={18} /><span>Cellar</span></button>
+                <button type="button" className="is-active"><ScanLine size={18} /><span>Scan</span></button>
+                <button type="button" onClick={openAdmin}><User size={18} /><span>Profile</span></button>
+              </nav>
+
               {scanFeedbackPhase !== 'idle' && (
                 <div className={`scan-feedback is-${scanFeedbackPhase}`}>
                   {scanFeedbackPhase === 'loading' && <div className="scan-loader" />}
@@ -2243,51 +2346,62 @@ export default function App() {
         )}
 
         {mode === 'content' && contentWine && (
-          <>
-            <section className="panel scanner-panel">
-              <div className="content-state">
-                <p className="eyebrow">{contentWine.region || contentWine.producer || ''}</p>
+          <section className="vinoria-content-screen">
+            <header className="vinoria-content-top">
+              <button type="button" onClick={handleStartScan}><X size={20} /></button>
+              <p>GRAND CRU SELECTION</p>
+              <button type="button"><ShareIcon /></button>
+            </header>
+
+            <div className="vinoria-content-hero">
+              {contentWine.labelImage ? <img src={contentWine.labelImage} alt={contentWine.title} /> : null}
+              <div className="vinoria-content-overlay">
+                <span className="vinoria-vintage-pill">VINTAGE {contentWine.year || 'NV'}</span>
                 <h2>{contentWine.title}</h2>
-                <p>{contentWine.story}</p>
-                <p className="meta">{contentWine.serving}</p>
-
-                <section>
-                  <p className="section-title">Pairings</p>
-                  <div className="chips-wrap">
-                    {contentWine.pairings.map((item) => (
-                      <span key={item} className="chip">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-
-                <section>
-                  <p className="section-title">Visual Story</p>
-                  <div className="gallery">
-                    {contentWine.gallery.map((url) => (
-                      <img key={url} src={url} alt={contentWine.title} className="gallery-image" loading="lazy" />
-                    ))}
-                  </div>
-                </section>
-
-                <div className="actions-row">
-                  <button className="primary-btn" onClick={handleStartScan}>
-                    Сканировать снова
-                  </button>
-                  <button className="ghost-btn" onClick={openAdmin}>
-                    Редактировать контент
-                  </button>
+                <p>{contentWine.producer || ''} • {contentWine.region || ''}</p>
+                <div className="vinoria-stat-grid">
+                  <div><span>CRITIC SCORE</span><strong>{Math.round((contentWine.rating || 0) * 20)} pts</strong></div>
+                  <div><span>ABV</span><strong>{contentWine.abv || '13.5%'}</strong></div>
+                  <div><span>TEMP</span><strong>18°C</strong></div>
                 </div>
               </div>
+            </div>
+
+            <section className="vinoria-dna-block">
+              <p className="section-title">THE WINE PROFILE</p>
+              <div className="vinoria-radar">
+                <div className="vinoria-radar-shape" />
+                <span className="l1">BODY</span><span className="l2">TANNINS</span><span className="l3">ACIDITY</span>
+                <span className="l4">ALCOHOL</span><span className="l5">OAK</span><span className="l6">FRUIT</span>
+              </div>
             </section>
-            <footer className="entry-footer">
-              <button className="admin-link" onClick={openAdmin}>
-                Перейти в админку
+
+            <section className="vinoria-copy-block">
+              <p className="section-title">PALATE NOTES</p>
+              <p>{contentWine.description || contentWine.story}</p>
+            </section>
+
+            <section className="vinoria-copy-block is-highlight">
+              <p className="section-title">IDEAL MOOD</p>
+              <h4>Romantic Dinner</h4>
+              <p>Dim lights, soft jazz, and an intimate celebration of milestones.</p>
+            </section>
+
+            <section className="vinoria-copy-block">
+              <p className="section-title">SOMMELIER'S TIP</p>
+              <blockquote>{contentWine.serving || 'Serve at 18°C and let it breathe before tasting.'}</blockquote>
+            </section>
+
+            <footer className="vinoria-content-footer">
+              <button className="vinoria-scan-cta" onClick={handleStartScan}>
+                <span>ADD TO CELLAR</span>
               </button>
-              <p className="copyright">VineLabs 2026</p>
+              <div className="vinoria-price-row">
+                <span>Available in 750ml, 1.5L Magnum</span>
+                <strong>$1,850.00</strong>
+              </div>
             </footer>
-          </>
+          </section>
         )}
 
         {mode === 'admin-login' && (

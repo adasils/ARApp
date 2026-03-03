@@ -1112,6 +1112,644 @@ h2 {
   color: var(--danger);
 }
 
+.app-shell.is-home,
+.app-shell.is-scan,
+.app-shell.is-content {
+  background: radial-gradient(circle at 50% -20%, rgba(153, 49, 17, 0.28), transparent 44%),
+    linear-gradient(180deg, #170204 0%, #1d0509 42%, #120204 100%);
+  color: #f9f3e7;
+}
+
+.vinoria-home {
+  min-height: 100svh;
+  position: relative;
+  overflow-x: hidden;
+  padding: 14px 14px 120px;
+  display: grid;
+  gap: 16px;
+}
+
+.vinoria-home-bg {
+  position: absolute;
+  inset: 0;
+  opacity: 0.09;
+  background-repeat: repeat;
+  background-size: 110px 110px;
+  transform: rotate(-14deg) scale(1.25);
+  pointer-events: none;
+}
+
+.vinoria-surface {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 18px;
+}
+
+.vinoria-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 12px;
+  border-bottom: 1px solid rgba(161, 92, 40, 0.2);
+}
+
+.vinoria-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: #d7b15a;
+}
+
+.vinoria-brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #d10f1f, #ae0e1a);
+  color: #f8ead0;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 10px 24px rgba(159, 10, 23, 0.28);
+}
+
+.vinoria-brand > span:not(.vinoria-brand-mark) {
+  font-size: clamp(1.2rem, 5.4vw, 1.9rem);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #f7e9bf;
+}
+
+.vinoria-top-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vinoria-icon-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid rgba(197, 152, 77, 0.38);
+  background: rgba(43, 10, 8, 0.68);
+  color: #e8c771;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.vinoria-icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(215, 179, 95, 0.62);
+  background: rgba(56, 14, 10, 0.86);
+}
+
+.vinoria-hero {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(119, 70, 31, 0.45);
+  background: #1f0d09;
+  min-height: min(65vh, 520px);
+}
+
+.vinoria-hero-image,
+.vinoria-hero-image img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.vinoria-hero-image img {
+  object-fit: cover;
+  filter: brightness(0.55) saturate(0.85);
+}
+
+.vinoria-hero-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 24px;
+  background: linear-gradient(180deg, transparent 5%, rgba(16, 5, 5, 0.9) 55%, rgba(15, 4, 4, 0.95) 100%);
+}
+
+.vinoria-hero-overlay h1 {
+  color: #fff;
+  font-size: clamp(2rem, 6.5vw, 3.5rem);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.vinoria-hero-overlay p {
+  color: #c8ccd5;
+  font-size: clamp(1rem, 3.8vw, 1.2rem);
+  line-height: 1.45;
+  max-width: 22ch;
+}
+
+.vinoria-section {
+  display: grid;
+  gap: 12px;
+}
+
+.vinoria-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.vinoria-section-head h3 {
+  margin: 0;
+  font-size: clamp(1.8rem, 7vw, 2.2rem);
+  color: #fff3d5;
+  letter-spacing: -0.02em;
+}
+
+.vinoria-link-btn {
+  border: 0;
+  background: transparent;
+  color: #d6aa4f;
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vinoria-cards-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vinoria-vintage-card {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.vinoria-vintage-image {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(116, 69, 28, 0.45);
+  min-height: 190px;
+  background: #26110b;
+}
+
+.vinoria-vintage-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vinoria-vintage-image span {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  border-radius: 999px;
+  background: rgba(24, 9, 6, 0.88);
+  border: 1px solid rgba(186, 137, 56, 0.52);
+  color: #e1b851;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 5px 10px;
+}
+
+.vinoria-vintage-region {
+  margin: 8px 0 0;
+  color: #d1a84f;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.vinoria-vintage-title {
+  margin: 4px 0 0;
+  color: #fff2d7;
+  font-size: clamp(1.05rem, 4.2vw, 1.3rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.vinoria-sommelier-card {
+  border: 1px solid rgba(153, 93, 39, 0.52);
+  border-radius: 20px;
+  background: rgba(58, 16, 13, 0.7);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  color: #ffeed2;
+}
+
+.vinoria-spark {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(158, 107, 45, 0.35);
+  display: grid;
+  place-items: center;
+  color: #edc66e;
+  font-size: 1.35rem;
+}
+
+.vinoria-sommelier-card h4 {
+  margin: 0;
+  font-size: clamp(1.45rem, 5.6vw, 2.05rem);
+  line-height: 1.08;
+}
+
+.vinoria-sommelier-card p {
+  margin: 4px 0 0;
+  color: #c9b9a4;
+  font-size: 1.08rem;
+}
+
+.vinoria-note {
+  color: #b9a58a;
+  font-size: 0.92rem;
+}
+
+.vinoria-scan-cta {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  width: min(92vw, 460px);
+  border-radius: 999px;
+  border: 1px solid #d4b46c;
+  background: linear-gradient(180deg, #e4c97e, #cfaa4e);
+  color: #421f0a;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  min-height: 68px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow:
+    0 10px 34px rgba(177, 122, 45, 0.28),
+    inset 0 1px 0 rgba(255, 245, 210, 0.5);
+}
+
+.vinoria-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(76px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(141, 84, 37, 0.35);
+  background: rgba(22, 5, 6, 0.95);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  z-index: 20;
+}
+
+.vinoria-bottom-nav.is-scan {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.vinoria-bottom-nav button {
+  border: 0;
+  background: transparent;
+  color: #7584a1;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vinoria-bottom-nav button.is-active {
+  color: #d9b35d;
+}
+
+.vinoria-admin-link-wrap {
+  text-align: center;
+  margin-bottom: 88px;
+}
+
+.vinoria-scan-screen {
+  min-height: 100svh;
+  padding: 0;
+  display: grid;
+}
+
+.vinoria-scan-overlay {
+  min-height: 100svh;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px 16px 96px;
+}
+
+.vinoria-scan-top {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.vinoria-scan-top p {
+  text-align: center;
+  font-size: clamp(1.8rem, 7vw, 2.2rem);
+  letter-spacing: 0.08em;
+  color: #ffecc4;
+  font-weight: 700;
+}
+
+.vinoria-target-frame {
+  height: min(62vh, 560px);
+  border: 2px solid rgba(208, 171, 75, 0.72);
+  border-radius: 22px;
+  position: relative;
+  box-shadow: inset 0 0 30px rgba(207, 170, 74, 0.12);
+  background: linear-gradient(180deg, rgba(8, 10, 18, 0.2), rgba(9, 5, 8, 0.42));
+}
+
+.vinoria-target-corners::before,
+.vinoria-target-corners::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.vinoria-target-corners::before {
+  border: 4px solid transparent;
+  border-image: linear-gradient(90deg, #d7b44f, transparent 25%, transparent 75%, #d7b44f) 1;
+}
+
+.vinoria-scan-status h2 {
+  margin: 4px 0;
+  font-size: clamp(2.2rem, 8vw, 2.8rem);
+  color: #fff6de;
+  line-height: 1.06;
+}
+
+.vinoria-scan-status p {
+  margin: 0;
+  color: #b8bdc8;
+  font-size: clamp(1rem, 4vw, 1.22rem);
+}
+
+.vinoria-progress-head {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  color: #d7ae4b;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.vinoria-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(104, 42, 26, 0.6);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.vinoria-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e2c461, #cfa53f);
+}
+
+.vinoria-scan-actions {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vinoria-scan-actions button {
+  min-height: 78px;
+  border-radius: 999px;
+  border: 1px solid rgba(121, 65, 31, 0.6);
+  background: rgba(35, 12, 10, 0.68);
+  color: #a9b3c9;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vinoria-scan-actions button.is-main {
+  border-color: #b66f3a;
+  color: #ffe9c0;
+  background: radial-gradient(circle at 50% 40%, #732018, #3f120e 60%, #2d0b0a);
+}
+
+.vinoria-content-screen {
+  min-height: 100svh;
+  background: linear-gradient(180deg, #170204 0%, #22070b 55%, #120204 100%);
+  color: #f5eedf;
+  display: grid;
+  align-content: start;
+}
+
+.vinoria-content-screen .section-title {
+  color: #d7af4f;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+}
+
+.vinoria-content-top {
+  height: 58px;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(145, 88, 40, 0.28);
+}
+
+.vinoria-content-top p {
+  text-align: center;
+  letter-spacing: 0.08em;
+  color: #d7ad4f;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.vinoria-content-top button {
+  border: 0;
+  background: transparent;
+  color: #fff2d7;
+}
+
+.vinoria-content-hero {
+  position: relative;
+  min-height: 360px;
+  border-bottom: 1px solid rgba(137, 72, 31, 0.28);
+}
+
+.vinoria-content-hero img {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  object-fit: cover;
+  filter: brightness(0.55);
+}
+
+.vinoria-content-overlay {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 16px;
+  background: linear-gradient(180deg, transparent 0%, rgba(23, 4, 5, 0.88) 50%, rgba(23, 4, 5, 0.95) 100%);
+}
+
+.vinoria-vintage-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  border: 1px solid rgba(170, 114, 47, 0.7);
+  color: #ddb559;
+  padding: 5px 12px;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.vinoria-content-overlay h2 {
+  margin: 0;
+  font-size: clamp(2.15rem, 9vw, 4.1rem);
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.vinoria-content-overlay p {
+  margin: 8px 0 0;
+  color: #c2b29d;
+  font-size: 1rem;
+}
+
+.vinoria-stat-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vinoria-stat-grid > div {
+  border: 1px solid rgba(164, 101, 42, 0.6);
+  border-radius: 12px;
+  background: rgba(40, 10, 9, 0.7);
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.vinoria-stat-grid span {
+  color: #c79f52;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.vinoria-stat-grid strong {
+  font-size: 1.25rem;
+}
+
+.vinoria-dna-block,
+.vinoria-copy-block {
+  padding: 18px 16px;
+  border-top: 1px solid rgba(145, 83, 35, 0.25);
+}
+
+.vinoria-radar {
+  position: relative;
+  margin: 12px auto 8px;
+  width: min(90vw, 320px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(118, 57, 33, 0.4);
+}
+
+.vinoria-radar-shape {
+  position: absolute;
+  inset: 19%;
+  background: rgba(216, 178, 79, 0.25);
+  clip-path: polygon(50% 0%, 88% 25%, 88% 75%, 50% 100%, 12% 75%, 12% 25%);
+  border: 1px solid #d8b24f;
+}
+
+.vinoria-radar span {
+  position: absolute;
+  font-size: 0.66rem;
+  color: #dbc18f;
+  letter-spacing: 0.06em;
+}
+
+.vinoria-radar .l1 { left: 50%; top: -10px; transform: translateX(-50%); }
+.vinoria-radar .l2 { right: -4px; top: 27%; }
+.vinoria-radar .l3 { right: 0; bottom: 28%; }
+.vinoria-radar .l4 { left: 50%; bottom: -12px; transform: translateX(-50%); }
+.vinoria-radar .l5 { left: 2px; bottom: 27%; }
+.vinoria-radar .l6 { left: -2px; top: 28%; }
+
+.vinoria-copy-block p {
+  margin: 0;
+  color: #d9d0c4;
+  line-height: 1.55;
+  font-size: 1.05rem;
+}
+
+.vinoria-copy-block.is-highlight h4 {
+  margin: 10px 0 6px;
+  font-size: 2rem;
+  color: #f8efe0;
+}
+
+.vinoria-copy-block blockquote {
+  margin: 8px 0 0;
+  border: 1px solid rgba(176, 108, 45, 0.65);
+  border-radius: 12px;
+  padding: 12px;
+  color: #ede5d7;
+  font-style: italic;
+}
+
+.vinoria-content-footer {
+  padding: 18px 16px 100px;
+  display: grid;
+  gap: 12px;
+}
+
+.vinoria-content-footer .vinoria-scan-cta {
+  position: static;
+  transform: none;
+  width: 100%;
+  margin: 0;
+}
+
+.vinoria-price-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  color: #c8b8a2;
+  font-size: 0.85rem;
+}
+
+.vinoria-price-row strong {
+  color: #fff4dd;
+  font-size: 2rem;
+}
+
 .app-shell.is-admin {
   background: #f5f6f8;
 }
