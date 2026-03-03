@@ -186,8 +186,6 @@ function extractPrefillFromOcr(rawText) {
   const yearMatch = compact.match(/\b(19|20)\d{2}\b/g) || [];
   const year = yearMatch.length ? yearMatch[0] : '';
 
-  const titleCandidate = lines.find((line) => /[A-Za-zА-Яа-я]/.test(line) && !/\b(19|20)\d{2}\b/.test(line))
-    || compact.split(' ').slice(0, 4).join(' ');
   const producerCandidate = lines.find((line, index) => index > 0 && /[A-Za-zА-Яа-я]/.test(line) && !/\b(19|20)\d{2}\b/.test(line)) || '';
 
   const regions = [
@@ -197,12 +195,21 @@ function extractPrefillFromOcr(rawText) {
   ];
   const lower = compact.toLowerCase();
   const region = regions.find((item) => lower.includes(item)) || '';
+  const grapesDictionary = [
+    'cabernet sauvignon', 'merlot', 'pinot noir', 'syrah', 'shiraz', 'malbec',
+    'sangiovese', 'tempranillo', 'nebbiolo', 'grenache', 'zinfandel', 'riesling',
+    'chardonnay', 'sauvignon blanc', 'chenin blanc', 'pinot grigio', 'muscadet',
+    'gewurztraminer', 'aligote', 'viognier', 'mourvedre', 'carignan',
+  ];
+  const foundGrapes = grapesDictionary
+    .filter((grape) => lower.includes(grape))
+    .slice(0, 3);
 
   return {
-    title: titleCandidate ? titleCandidate.slice(0, 80) : '',
     year,
     producer: producerCandidate ? producerCandidate.slice(0, 80) : '',
     region: region || '',
+    grapes: foundGrapes.join(', '),
   };
 }
 
@@ -1732,25 +1739,22 @@ export default function App() {
       const parsed = extractPrefillFromOcr(payload?.ocr_text_raw || payload?.ocr_text || '');
       let filledCount = 0;
       setForm((prev) => {
-        const nextTitle = prev.title || parsed.title || '';
         const nextYear = prev.year || parsed.year || '';
         const nextRegion = prev.region || parsed.region || '';
         const nextProducer = prev.producer || parsed.producer || '';
-        const nextSubtitle = prev.subtitle || [nextRegion, nextYear].filter(Boolean).join(', ');
+        const nextGrapes = prev.grapes || parsed.grapes || '';
         filledCount = [
-          !prev.title && Boolean(nextTitle),
           !prev.year && Boolean(nextYear),
           !prev.region && Boolean(nextRegion),
           !prev.producer && Boolean(nextProducer),
-          !prev.subtitle && Boolean(nextSubtitle),
+          !prev.grapes && Boolean(nextGrapes),
         ].filter(Boolean).length;
         return {
           ...prev,
-          title: nextTitle,
           year: nextYear,
           producer: nextProducer,
           region: nextRegion,
-          subtitle: nextSubtitle,
+          grapes: nextGrapes,
         };
       });
       if (filledCount > 0) {
