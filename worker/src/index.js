@@ -33,7 +33,25 @@ function normalizeWine(wine, fallbackIndex = 0) {
     description: String(wine?.description || '').trim(),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, Number(rating.toFixed(1)))) : 0,
     labelImage: String(wine?.labelImage || '').trim(),
+    labelAssets: Array.isArray(wine?.labelAssets)
+      ? wine.labelAssets.map((asset, index) => ({
+        id: String(asset?.id || `asset-${index + 1}`).trim(),
+        role: String(asset?.role || '').trim(),
+        dataUrl: String(asset?.dataUrl || '').trim(),
+        qualityScore: Number.parseInt(asset?.qualityScore, 10) || 0,
+        qualityStatus: String(asset?.qualityStatus || '').trim() || 'unknown',
+        qualityNotes: Array.isArray(asset?.qualityNotes)
+          ? asset.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
+          : [],
+        visualEmbedding: normalizeEmbedding(asset?.visualEmbedding),
+      })).filter((asset) => asset.dataUrl)
+      : [],
     visualEmbedding: normalizeEmbedding(wine?.visualEmbedding),
+    qualityScore: Number.parseInt(wine?.qualityScore, 10) || 0,
+    qualityStatus: String(wine?.qualityStatus || '').trim() || 'unknown',
+    qualityNotes: Array.isArray(wine?.qualityNotes)
+      ? wine.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
     pairings: Array.isArray(wine?.pairings) ? wine.pairings.map((x) => String(x || '').trim()).filter(Boolean) : [],
     gallery: Array.isArray(wine?.gallery) ? wine.gallery.map((x) => String(x || '').trim()).filter(Boolean) : [],
   };

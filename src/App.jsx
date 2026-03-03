@@ -11,6 +11,7 @@ const DONE_MS = 900;
 const MINDAR_TIMEOUT_MS = 3200;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
+const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
 
 function isApiEnabled() {
   return Boolean(API_BASE_URL);
@@ -67,9 +68,86 @@ function normalizeArray(value) {
   return value.map((item) => String(item || '').trim()).filter(Boolean);
 }
 
+function normalizeLabelAsset(asset, fallbackIndex = 0) {
+  const role = normalizeString(asset?.role) || LABEL_ROLES[Math.min(fallbackIndex, LABEL_ROLES.length - 1)];
+  const qualityScore = Number.parseInt(asset?.qualityScore, 10);
+  return {
+    id: normalizeString(asset?.id) || `asset-${fallbackIndex + 1}`,
+    role,
+    dataUrl: normalizeString(asset?.dataUrl),
+    qualityScore: Number.isFinite(qualityScore) ? qualityScore : 0,
+    qualityStatus: normalizeString(asset?.qualityStatus) || 'unknown',
+    qualityNotes: Array.isArray(asset?.qualityNotes)
+      ? asset.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
+      : [],
+    visualEmbedding: Array.isArray(asset?.visualEmbedding)
+      ? asset.visualEmbedding.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value))
+      : [],
+  };
+}
+
+function normalizeLabelAssets(assets) {
+  if (!Array.isArray(assets)) {
+    return [];
+  }
+  return assets.map((asset, index) => normalizeLabelAsset(asset, index)).filter((asset) => asset.dataUrl);
+}
+
+function averageEmbedding(assets) {
+  const vectors = assets
+    .map((asset) => (Array.isArray(asset.visualEmbedding) ? asset.visualEmbedding : []))
+    .filter((vector) => vector.length > 0);
+  if (!vectors.length) {
+    return [];
+  }
+  const minLen = Math.min(...vectors.map((vector) => vector.length));
+  if (!minLen) {
+    return [];
+  }
+  const result = new Array(minLen).fill(0);
+  vectors.forEach((vector) => {
+    for (let i = 0; i < minLen; i += 1) {
+      result[i] += Number.parseFloat(vector[i]) || 0;
+    }
+  });
+  return result.map((value) => Number((value / vectors.length).toFixed(6)));
+}
+
+function pickPrimaryAsset(assets) {
+  if (!Array.isArray(assets) || !assets.length) {
+    return null;
+  }
+  return assets.find((asset) => asset.role === 'front') || assets[0];
+}
+
+function deriveLabelFieldsFromAssets(assets) {
+  const normalized = normalizeLabelAssets(assets);
+  const primary = pickPrimaryAsset(normalized);
+  return {
+    labelAssets: normalized,
+    labelImage: primary?.dataUrl || '',
+    visualEmbedding: averageEmbedding(normalized),
+    qualityScore: Number.isFinite(primary?.qualityScore) ? primary.qualityScore : 0,
+    qualityStatus: primary?.qualityStatus || 'unknown',
+    qualityNotes: Array.isArray(primary?.qualityNotes) ? primary.qualityNotes : [],
+  };
+}
+
+function pickNextRole(existingAssets, index = 0) {
+  const used = new Set((existingAssets || []).map((asset) => asset.role));
+  const available = LABEL_ROLES.find((role) => !used.has(role));
+  if (available) {
+    return available;
+  }
+  return LABEL_ROLES[Math.min(index, LABEL_ROLES.length - 1)];
+}
+
 function normalizeWine(wine, fallbackIndex) {
   const targetIndex = Number.parseInt(wine?.targetIndex, 10);
   const rating = Number.parseFloat(wine?.rating);
+  const labelAssets = normalizeLabelAssets(wine?.labelAssets);
+  const derived = deriveLabelFieldsFromAssets(labelAssets);
+  const fallbackLabelImage = normalizeString(wine?.labelImage);
   return {
     id: normalizeString(wine?.id) || `wine-${fallbackIndex + 1}`,
     targetIndex: Number.isInteger(targetIndex) && targetIndex >= 0
@@ -85,10 +163,20 @@ function normalizeWine(wine, fallbackIndex) {
     story: normalizeString(wine?.story),
     serving: normalizeString(wine?.serving),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0,
-    labelImage: normalizeString(wine?.labelImage),
-    visualEmbedding: Array.isArray(wine?.visualEmbedding)
-      ? wine.visualEmbedding.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value))
-      : [],
+    labelAssets,
+    labelImage: derived.labelImage || fallbackLabelImage,
+    visualEmbedding: derived.visualEmbedding.length
+      ? derived.visualEmbedding
+      : Array.isArray(wine?.visualEmbedding)
+        ? wine.visualEmbedding.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value))
+        : [],
+    qualityScore: derived.qualityScore || Number.parseInt(wine?.qualityScore, 10) || 0,
+    qualityStatus: derived.qualityStatus || normalizeString(wine?.qualityStatus) || 'unknown',
+    qualityNotes: derived.qualityNotes.length
+      ? derived.qualityNotes
+      : Array.isArray(wine?.qualityNotes)
+        ? wine.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean)
+        : [],
     pairings: normalizeArray(wine?.pairings),
     gallery: normalizeArray(wine?.gallery),
   };
@@ -284,6 +372,7 @@ async function assessLabelQuality(dataUrl) {
 }
 
 function getFormFromWine(wine) {
+  const derived = deriveLabelFieldsFromAssets(wine?.labelAssets);
   return {
     id: wine?.id || '',
     targetIndex: wine ? String(wine.targetIndex) : '0',
@@ -297,13 +386,20 @@ function getFormFromWine(wine) {
     story: wine?.story || '',
     serving: wine?.serving || '',
     rating: wine ? String(wine.rating ?? 0) : '0',
-    labelImage: wine?.labelImage || '',
+    labelImage: derived.labelImage || wine?.labelImage || '',
+    labelAssets: derived.labelAssets.length ? derived.labelAssets : normalizeLabelAssets(wine?.labelAssets),
     pairings: wine?.pairings?.join('\n') || '',
     gallery: wine?.gallery?.join('\n') || '',
-    visualEmbedding: Array.isArray(wine?.visualEmbedding) ? wine.visualEmbedding : [],
-    qualityScore: Number.parseInt(wine?.qualityScore, 10) || 0,
-    qualityStatus: wine?.qualityStatus || 'unknown',
-    qualityNotes: Array.isArray(wine?.qualityNotes) ? wine.qualityNotes : [],
+    visualEmbedding: derived.visualEmbedding.length
+      ? derived.visualEmbedding
+      : Array.isArray(wine?.visualEmbedding)
+        ? wine.visualEmbedding
+        : [],
+    qualityScore: derived.qualityScore || Number.parseInt(wine?.qualityScore, 10) || 0,
+    qualityStatus: derived.qualityStatus || wine?.qualityStatus || 'unknown',
+    qualityNotes: derived.qualityNotes.length
+      ? derived.qualityNotes
+      : Array.isArray(wine?.qualityNotes) ? wine.qualityNotes : [],
   };
 }
 
@@ -322,6 +418,7 @@ function createEmptyForm(nextIndex = 0) {
     serving: '',
     rating: '0',
     labelImage: '',
+    labelAssets: [],
     pairings: '',
     gallery: '',
     visualEmbedding: [],
@@ -359,6 +456,13 @@ export default function App() {
     targetIndex: null,
     error: '',
   });
+  const [cropEditor, setCropEditor] = useState({
+    assetId: '',
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+  });
   const [notice, setNotice] = useState({ text: '', type: '' });
   const [startError, setStartError] = useState('');
 
@@ -381,6 +485,10 @@ export default function App() {
   const selectedWine = useMemo(() => {
     return wines.find((wine) => wine.id === selectedWineId) || null;
   }, [wines, selectedWineId]);
+
+  const selectedCropAsset = useMemo(() => {
+    return normalizeLabelAssets(form.labelAssets).find((asset) => asset.id === cropEditor.assetId) || null;
+  }, [form.labelAssets, cropEditor.assetId]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -931,47 +1039,65 @@ export default function App() {
   }
 
   async function handleLabelImageUpload(event) {
-    const file = event.target.files?.[0];
-    if (!file) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
       return;
     }
+
     try {
-      const optimized = await optimizeLabelImage(file);
-      const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
-      const quality = await assessLabelQuality(optimized.dataUrl);
-      setForm((prev) => ({
-        ...prev,
-        labelImage: optimized.dataUrl,
-        visualEmbedding,
-        qualityScore: quality.score,
-        qualityStatus: quality.status,
-        qualityNotes: quality.notes,
-      }));
+      const builtAssets = [];
+      for (let i = 0; i < files.length; i += 1) {
+        const file = files[i];
+        const optimized = await optimizeLabelImage(file);
+        const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
+        const quality = await assessLabelQuality(optimized.dataUrl);
+        builtAssets.push({
+          id: crypto.randomUUID(),
+          role: '',
+          dataUrl: optimized.dataUrl,
+          qualityScore: quality.score,
+          qualityStatus: quality.status,
+          qualityNotes: quality.notes,
+          visualEmbedding,
+          meta: optimized,
+        });
+      }
+
+      setForm((prev) => {
+        const existing = normalizeLabelAssets(prev.labelAssets);
+        const enriched = builtAssets.map((asset, index) => ({
+          ...asset,
+          role: pickNextRole([...existing, ...builtAssets.slice(0, index)], index),
+        }));
+        const labelAssets = [...existing, ...enriched];
+        return {
+          ...prev,
+          ...deriveLabelFieldsFromAssets(labelAssets),
+        };
+      });
+
       setLabelProcess({
         jobId: null,
         status: 'idle',
         targetIndex: null,
         error: '',
       });
+
+      const reducedCount = builtAssets.filter((asset) => asset.meta?.reduced).length;
       setNotice({
-        text: optimized.reduced
-          ? `Фото оптимизировано: ${formatKb(optimized.sourceBytes)} → ${formatKb(optimized.optimizedBytes)}. Качество: ${quality.score}/100.`
-          : `Фото этикетки добавлено. Качество: ${quality.score}/100.`,
+        text: `Добавлено фото: ${builtAssets.length}. Оптимизировано: ${reducedCount}.`,
         type: 'success',
       });
     } catch (error) {
-      setNotice({ text: error.message || 'Не удалось подготовить файл этикетки.', type: 'error' });
+      setNotice({ text: error.message || 'Не удалось подготовить файлы этикеток.', type: 'error' });
     }
   }
 
   function handleClearLabelImage() {
     setForm((prev) => ({
       ...prev,
-      labelImage: '',
-      visualEmbedding: [],
-      qualityScore: 0,
-      qualityStatus: 'unknown',
-      qualityNotes: [],
+      labelAssets: [],
+      ...deriveLabelFieldsFromAssets([]),
     }));
     setLabelProcess({
       jobId: null,
@@ -979,6 +1105,106 @@ export default function App() {
       targetIndex: null,
       error: '',
     });
+  }
+
+  function handleLabelRoleChange(assetId, role) {
+    setForm((prev) => {
+      const nextAssets = normalizeLabelAssets(prev.labelAssets).map((asset) => (
+        asset.id === assetId ? { ...asset, role } : asset
+      ));
+      return { ...prev, ...deriveLabelFieldsFromAssets(nextAssets) };
+    });
+    setLabelProcess({
+      jobId: null,
+      status: 'idle',
+      targetIndex: null,
+      error: '',
+    });
+  }
+
+  function handleRemoveLabelAsset(assetId) {
+    setForm((prev) => {
+      const nextAssets = normalizeLabelAssets(prev.labelAssets).filter((asset) => asset.id !== assetId);
+      return { ...prev, ...deriveLabelFieldsFromAssets(nextAssets) };
+    });
+    setCropEditor((prev) => (prev.assetId === assetId ? {
+      assetId: '',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    } : prev));
+    setLabelProcess({
+      jobId: null,
+      status: 'idle',
+      targetIndex: null,
+      error: '',
+    });
+  }
+
+  function openCropEditor(assetId) {
+    setCropEditor({
+      assetId,
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+  }
+
+  async function applyCropToAsset() {
+    const asset = normalizeLabelAssets(form.labelAssets).find((item) => item.id === cropEditor.assetId);
+    if (!asset?.dataUrl) {
+      return;
+    }
+    try {
+      const image = await loadImage(asset.dataUrl);
+      const sx = Math.round((cropEditor.x / 100) * image.naturalWidth);
+      const sy = Math.round((cropEditor.y / 100) * image.naturalHeight);
+      const sw = Math.max(8, Math.round((cropEditor.width / 100) * image.naturalWidth));
+      const sh = Math.max(8, Math.round((cropEditor.height / 100) * image.naturalHeight));
+
+      const boundedW = Math.min(sw, image.naturalWidth - sx);
+      const boundedH = Math.min(sh, image.naturalHeight - sy);
+      const canvas = document.createElement('canvas');
+      canvas.width = boundedW;
+      canvas.height = boundedH;
+      const context = canvas.getContext('2d', { alpha: false });
+      if (!context) {
+        throw new Error('Не удалось применить crop.');
+      }
+
+      context.drawImage(image, sx, sy, boundedW, boundedH, 0, 0, boundedW, boundedH);
+      const croppedDataUrl = canvas.toDataURL('image/jpeg', LABEL_JPEG_QUALITY);
+      const visualEmbedding = await computeVisualEmbeddingFromDataUrl(croppedDataUrl);
+      const quality = await assessLabelQuality(croppedDataUrl);
+
+      setForm((prev) => {
+        const nextAssets = normalizeLabelAssets(prev.labelAssets).map((item) => (
+          item.id === asset.id
+            ? {
+              ...item,
+              dataUrl: croppedDataUrl,
+              visualEmbedding,
+              qualityScore: quality.score,
+              qualityStatus: quality.status,
+              qualityNotes: quality.notes,
+            }
+            : item
+        ));
+        return { ...prev, ...deriveLabelFieldsFromAssets(nextAssets) };
+      });
+
+      setLabelProcess({
+        jobId: null,
+        status: 'idle',
+        targetIndex: null,
+        error: '',
+      });
+      setNotice({ text: `Кадрирование применено. Качество: ${quality.score}/100.`, type: 'success' });
+    } catch (error) {
+      setNotice({ text: error.message || 'Не удалось применить crop.', type: 'error' });
+    }
   }
 
   async function pollLabelJob(jobId) {
@@ -1029,12 +1255,21 @@ export default function App() {
       return;
     }
 
-    if (!form.labelImage) {
-      setNotice({ text: 'Сначала загрузи фото этикетки.', type: 'error' });
+    const assets = normalizeLabelAssets(form.labelAssets);
+    const primary = pickPrimaryAsset(assets);
+    const roles = new Set(assets.map((asset) => asset.role));
+    const hasRequired = ['front', 'left', 'right'].every((role) => roles.has(role));
+
+    if (!assets.length || !primary?.dataUrl) {
+      setNotice({ text: 'Сначала загрузи фото этикеток (минимум front/left/right).', type: 'error' });
       return;
     }
-    if (form.qualityStatus === 'bad') {
-      setNotice({ text: 'Фото этикетки низкого качества. Пересними без бликов и размытия.', type: 'error' });
+    if (!hasRequired) {
+      setNotice({ text: 'Добавь обязательные ракурсы: front, left и right.', type: 'error' });
+      return;
+    }
+    if (primary.qualityStatus === 'bad') {
+      setNotice({ text: 'Основное фото этикетки низкого качества. Пересними без бликов и размытия.', type: 'error' });
       return;
     }
 
@@ -1055,7 +1290,7 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({
           wineId: selectedWineId,
-          labelImage: form.labelImage,
+          labelImage: primary.dataUrl,
         }),
       });
 
@@ -1136,6 +1371,7 @@ export default function App() {
       qualityScore: Number.parseInt(form.qualityScore, 10) || 0,
       qualityStatus: normalizeString(form.qualityStatus) || 'unknown',
       qualityNotes: Array.isArray(form.qualityNotes) ? form.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean) : [],
+      labelAssets: normalizeLabelAssets(form.labelAssets),
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
@@ -1454,10 +1690,12 @@ export default function App() {
                   <p><strong>Подача:</strong> {selectedWine.serving}</p>
                   <p className="detail-wide"><strong>Описание:</strong> {selectedWine.description || '—'}</p>
                   <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
-                  {selectedWine.labelImage && (
+                  {!!selectedWine.labelAssets?.length && (
                     <p className="detail-wide">
-                      <strong>Этикетка:</strong>
-                      <img className="label-preview" src={selectedWine.labelImage} alt={selectedWine.title} />
+                      <strong>Этикетки:</strong>
+                      {selectedWine.labelAssets.map((asset) => (
+                        <img key={asset.id} className="label-preview" src={asset.dataUrl} alt={`${selectedWine.title} ${asset.role}`} />
+                      ))}
                     </p>
                   )}
                   <p className="detail-wide"><strong>Pairings:</strong> {selectedWine.pairings.join(', ') || '—'}</p>
@@ -1556,20 +1794,108 @@ export default function App() {
                   </label>
 
                   <div className="field field-wide">
-                    <span>Фото этикетки (для target)</span>
+                    <span>Этикетки (front/left/right обязательны)</span>
                     <div className="label-upload-row">
-                      <input type="file" accept="image/*" onChange={handleLabelImageUpload} />
+                      <input type="file" accept="image/*" multiple onChange={handleLabelImageUpload} />
                       <button className="primary-btn" type="button" onClick={handleProcessLabel}>
                         Обработать этикетку
                       </button>
-                      {form.labelImage && (
+                      {!!form.labelAssets?.length && (
                         <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
-                          Убрать фото
+                          Убрать все
                         </button>
                       )}
                     </div>
-                    {form.labelImage && (
-                      <img className="label-preview" src={form.labelImage} alt="Этикетка для распознавания" />
+                    {!!form.labelAssets?.length && (
+                      <div className="wine-grid">
+                        {form.labelAssets.map((asset) => (
+                          <div key={asset.id} className="wine-card">
+                            <div className="field">
+                              <span>Роль</span>
+                              <select
+                                value={asset.role}
+                                onChange={(event) => handleLabelRoleChange(asset.id, event.target.value)}
+                              >
+                                {LABEL_ROLES.map((role) => (
+                                  <option key={role} value={role}>{role}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <img className="label-preview" src={asset.dataUrl} alt={`Этикетка ${asset.role}`} />
+                            <p className="field-note">
+                              {asset.qualityStatus === 'good' && `✅ ${asset.qualityScore}/100`}
+                              {asset.qualityStatus === 'medium' && `⚠️ ${asset.qualityScore}/100`}
+                              {asset.qualityStatus === 'bad' && `❌ ${asset.qualityScore}/100`}
+                              {asset.qualityStatus === 'unknown' && '—'}
+                            </p>
+                            <div className="actions-row">
+                              <button className="ghost-btn" type="button" onClick={() => openCropEditor(asset.id)}>
+                                Crop
+                              </button>
+                              <button className="ghost-btn" type="button" onClick={() => handleRemoveLabelAsset(asset.id)}>
+                                Удалить
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {selectedCropAsset && (
+                      <div className="detail-grid">
+                        <p className="detail-wide"><strong>Crop editor:</strong> {selectedCropAsset.role}</p>
+                        <label className="field detail-wide">
+                          <span>X (%)</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="95"
+                            value={cropEditor.x}
+                            onChange={(event) => setCropEditor((prev) => ({ ...prev, x: Number(event.target.value) }))}
+                          />
+                        </label>
+                        <label className="field detail-wide">
+                          <span>Y (%)</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="95"
+                            value={cropEditor.y}
+                            onChange={(event) => setCropEditor((prev) => ({ ...prev, y: Number(event.target.value) }))}
+                          />
+                        </label>
+                        <label className="field detail-wide">
+                          <span>Width (%)</span>
+                          <input
+                            type="range"
+                            min="5"
+                            max={100 - cropEditor.x}
+                            value={cropEditor.width}
+                            onChange={(event) => setCropEditor((prev) => ({ ...prev, width: Number(event.target.value) }))}
+                          />
+                        </label>
+                        <label className="field detail-wide">
+                          <span>Height (%)</span>
+                          <input
+                            type="range"
+                            min="5"
+                            max={100 - cropEditor.y}
+                            value={cropEditor.height}
+                            onChange={(event) => setCropEditor((prev) => ({ ...prev, height: Number(event.target.value) }))}
+                          />
+                        </label>
+                        <div className="actions-row">
+                          <button className="primary-btn" type="button" onClick={applyCropToAsset}>
+                            Применить crop
+                          </button>
+                          <button
+                            className="ghost-btn"
+                            type="button"
+                            onClick={() => setCropEditor({ assetId: '', x: 0, y: 0, width: 100, height: 100 })}
+                          >
+                            Закрыть
+                          </button>
+                        </div>
+                      </div>
                     )}
                     {form.qualityStatus !== 'unknown' && (
                       <p className={`field-note process-note is-${
@@ -1601,7 +1927,7 @@ export default function App() {
                       </p>
                     )}
                     <p className="field-note">
-                      Для фактического распознавания фото нужно добавить в target-файл MindAR (`.mind`) и выставить соответствующий `targetIndex`.
+                      Для текущей сборки target используется роль `front`, но visual fallback использует все загруженные ракурсы.
                     </p>
                   </div>
 
