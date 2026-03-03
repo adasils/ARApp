@@ -199,7 +199,7 @@ function normalizeWine(wine, fallbackIndex = 0) {
     id: String(wine?.id || `wine-${fallbackIndex + 1}`).trim(),
     targetIndex: Number.isInteger(targetIndex) && targetIndex >= 0 ? targetIndex : fallbackIndex,
     title: String(wine?.title || '').trim(),
-    subtitle: String(wine?.subtitle || '').trim(),
+    subtitle: String(wine?.subtitle || wine?.region || '').trim(),
     story: String(wine?.story || '').trim(),
     serving: String(wine?.serving || '').trim(),
     producer: String(wine?.producer || '').trim(),
@@ -243,8 +243,8 @@ function validateWine(wine) {
     throw new Error('Field "id" is required.');
   }
   const isDraft = wine.status === 'draft';
-  if (!isDraft && (!wine.title || !wine.subtitle || !wine.story || !wine.serving)) {
-    throw new Error('Required fields: title, subtitle, story, serving.');
+  if (!isDraft && (!wine.title || !wine.story || !wine.serving)) {
+    throw new Error('Required fields: title, story, serving.');
   }
   if (!Number.isInteger(wine.targetIndex) || wine.targetIndex < 0) {
     throw new Error('targetIndex must be an integer >= 0.');
@@ -405,17 +405,17 @@ function normalizeTargetWineMap(value) {
     .filter((item) => item.wineId);
 }
 
-async function extractOcrTextFromImage(dataUrl, env) {
+async function extractOcrDataFromImage(dataUrl, env) {
   const apiKey = String(env.OCR_SPACE_API_KEY || '').trim();
   if (!apiKey || !dataUrl) {
-    return '';
+    return { text: '', lines: [] };
   }
 
   const body = new URLSearchParams();
   body.set('apikey', apiKey);
   body.set('base64Image', dataUrl);
   body.set('language', 'eng');
-  body.set('isOverlayRequired', 'false');
+  body.set('isOverlayRequired', 'true');
   body.set('OCREngine', '2');
 
   const response = await fetch('https://api.ocr.space/parse/image', {
@@ -427,19 +427,30 @@ async function extractOcrTextFromImage(dataUrl, env) {
   });
 
   if (!response.ok) {
-    return '';
+    return { text: '', lines: [] };
   }
 
   const payload = await response.json().catch(() => null);
   if (!payload || payload.IsErroredOnProcessing) {
-    return '';
+    return { text: '', lines: [] };
   }
 
   const parsed = Array.isArray(payload.ParsedResults) ? payload.ParsedResults : [];
-  return parsed
+  const text = parsed
     .map((item) => String(item?.ParsedText || '').trim())
     .filter(Boolean)
     .join('\n');
+  const lines = parsed
+    .flatMap((item) => {
+      const overlayLines = Array.isArray(item?.TextOverlay?.Lines) ? item.TextOverlay.Lines : [];
+      return overlayLines.map((line) => ({
+        text: String(line?.LineText || '').trim(),
+        minTop: Number.parseFloat(line?.MinTop) || 0,
+        maxHeight: Number.parseFloat(line?.MaxHeight) || 0,
+      }));
+    })
+    .filter((line) => line.text);
+  return { text, lines };
 }
 
 export default {
@@ -643,10 +654,13 @@ export default {
       try {
         const payload = await request.json();
         const providedRaw = String(payload?.ocr_text || '').trim();
-        const rawOcrText = providedRaw || await extractOcrTextFromImage(String(payload?.image_base64 || ''), env);
+        const extracted = providedRaw
+          ? { text: providedRaw, lines: [] }
+          : await extractOcrDataFromImage(String(payload?.image_base64 || ''), env);
+        const rawOcrText = providedRaw || extracted.text;
         const queryText = normalizeQueryText(rawOcrText);
         if (!queryText) {
-          return json({ matches: [], best: null, ocr_text: '', ocr_text_raw: rawOcrText || '' });
+          return json({ matches: [], best: null, ocr_text: '', ocr_text_raw: rawOcrText || '', ocr_lines: extracted.lines || [] });
         }
 
         const wines = normalizeWines(await getWines(env));
@@ -667,7 +681,13 @@ export default {
           ? { wine_id: matches[0].wine_id, score: matches[0].score }
           : null;
 
-        return json({ matches, best, ocr_text: queryText, ocr_text_raw: rawOcrText || '' });
+        return json({
+          matches,
+          best,
+          ocr_text: queryText,
+          ocr_text_raw: rawOcrText || '',
+          ocr_lines: extracted.lines || [],
+        });
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
       }

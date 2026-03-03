@@ -127,7 +127,7 @@ function normalizeWine(wine, fallbackIndex) {
       ? targetIndex
       : fallbackIndex,
     title: normalizeString(wine?.title),
-    subtitle: normalizeString(wine?.subtitle),
+    subtitle: normalizeString(wine?.subtitle) || normalizeString(wine?.region),
     producer: normalizeString(wine?.producer),
     region: normalizeString(wine?.region),
     year: normalizeString(wine?.year),
@@ -174,7 +174,7 @@ function parseGallery(value) {
     .filter(Boolean);
 }
 
-function extractPrefillFromOcr(rawText) {
+function extractPrefillFromOcr(rawText, ocrLines = []) {
   const source = String(rawText || '').trim();
   if (!source) {
     return {};
@@ -207,14 +207,33 @@ function extractPrefillFromOcr(rawText) {
     .slice(0, 3);
   const grapesRegex = new RegExp(grapesDictionary.map((item) => item.replace(/\s+/g, '\\s+')).join('|'), 'i');
   const regionRegex = new RegExp(regions.join('|'), 'i');
+  const toNormalizedLine = (line) => String(line || '').replace(/\s+/g, ' ').trim();
   const cleanedLines = lines
-    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .map((line) => toNormalizedLine(line))
     .filter((line) => line.length >= 3)
     .filter((line) => !skipHints.test(line))
     .filter((line) => !grapesRegex.test(line))
     .filter((line) => !regionRegex.test(line));
+  const normalizedOverlayLines = Array.isArray(ocrLines)
+    ? ocrLines
+      .map((line) => ({
+        text: toNormalizedLine(line?.text || line?.LineText || ''),
+        minTop: Number.parseFloat(line?.minTop ?? line?.MinTop ?? 0) || 0,
+        maxHeight: Number.parseFloat(line?.maxHeight ?? line?.MaxHeight ?? 0) || 0,
+      }))
+      .filter((line) => line.text.length >= 3)
+      .filter((line) => !skipHints.test(line.text))
+      .filter((line) => !grapesRegex.test(line.text))
+      .filter((line) => !regionRegex.test(line.text))
+    : [];
 
   let producerCandidate = cleanedLines.find((line) => producerHints.test(line)) || '';
+  if (!producerCandidate && normalizedOverlayLines.length) {
+    const sortedByTop = [...normalizedOverlayLines].sort((a, b) => a.minTop - b.minTop);
+    const topLimit = sortedByTop[0].minTop + Math.max(60, sortedByTop[0].maxHeight * 2.5);
+    const topLines = sortedByTop.filter((line) => line.minTop <= topLimit);
+    producerCandidate = topLines.find((line) => producerHints.test(line.text))?.text || '';
+  }
   if (!producerCandidate) {
     const longCandidates = cleanedLines.filter((line) => line.length >= 8);
     producerCandidate = longCandidates.slice(1).find(Boolean) || longCandidates[0] || '';
@@ -223,7 +242,24 @@ function extractPrefillFromOcr(rawText) {
     producerCandidate = cleanedLines[1];
   }
 
+  let titleCandidate = cleanedLines[0] || '';
+  if (normalizedOverlayLines.length) {
+    const rankedByVisualSize = [...normalizedOverlayLines]
+      .filter((line) => !producerHints.test(line.text))
+      .sort((a, b) => {
+        if (b.maxHeight !== a.maxHeight) {
+          return b.maxHeight - a.maxHeight;
+        }
+        return a.minTop - b.minTop;
+      });
+    titleCandidate = rankedByVisualSize[0]?.text || titleCandidate;
+  }
+  if (titleCandidate && producerCandidate && titleCandidate === producerCandidate) {
+    titleCandidate = cleanedLines.find((line) => line !== producerCandidate) || titleCandidate;
+  }
+
   return {
+    title: titleCandidate ? titleCandidate.slice(0, 120) : '',
     year,
     producer: producerCandidate ? producerCandidate.slice(0, 80) : '',
     region: region || '',
@@ -502,7 +538,7 @@ function getFormFromWine(wine) {
     id: wine?.id || '',
     targetIndex: wine ? String(wine.targetIndex) : '0',
     title: wine?.title || '',
-    subtitle: wine?.subtitle || '',
+    subtitle: wine?.subtitle || wine?.region || '',
     producer: wine?.producer || '',
     region: wine?.region || '',
     year: wine?.year || '',
@@ -1623,7 +1659,7 @@ export default function App() {
       });
 
       const draftWineId = generateWineId(
-        { title: form.title, region: form.region || form.subtitle },
+        { title: form.title, region: form.region },
         wines.filter((wine) => wine.id !== selectedWineId),
         normalizeString(selectedWineId || form.id)
       );
@@ -1757,23 +1793,35 @@ export default function App() {
       return;
     }
     try {
-      setNotice({ text: 'Распознаем текст с этикетки...', type: 'success' });
-      const payload = await apiFetch('/api/recognize/ocr', {
-        method: 'POST',
-        body: JSON.stringify({
-          image_base64: front.dataUrl,
-          ocr_text: '',
-          locale_hint: 'ru',
-        }),
-      });
-      const parsed = extractPrefillFromOcr(payload?.ocr_text_raw || payload?.ocr_text || '');
+      const assetsForOcr = REQUIRED_LABEL_ROLES
+        .map((role) => getAssetByRole(role))
+        .filter((asset) => asset?.dataUrl);
+      setNotice({ text: `Распознаем текст с ${assetsForOcr.length} ракурсов...`, type: 'success' });
+      const payloads = await Promise.all(
+        assetsForOcr.map((asset) => apiFetch('/api/recognize/ocr', {
+          method: 'POST',
+          body: JSON.stringify({
+            image_base64: asset.dataUrl,
+            ocr_text: '',
+            locale_hint: 'ru',
+          }),
+        }))
+      );
+      const mergedRawText = payloads
+        .map((payload) => String(payload?.ocr_text_raw || payload?.ocr_text || '').trim())
+        .filter(Boolean)
+        .join('\n');
+      const mergedLines = payloads.flatMap((payload) => (Array.isArray(payload?.ocr_lines) ? payload.ocr_lines : []));
+      const parsed = extractPrefillFromOcr(mergedRawText, mergedLines);
       let filledCount = 0;
       setForm((prev) => {
+        const nextTitle = prev.title || parsed.title || '';
         const nextYear = prev.year || parsed.year || '';
         const nextRegion = prev.region || parsed.region || '';
         const nextProducer = prev.producer || parsed.producer || '';
         const nextGrapes = prev.grapes || parsed.grapes || '';
         filledCount = [
+          !prev.title && Boolean(nextTitle),
           !prev.year && Boolean(nextYear),
           !prev.region && Boolean(nextRegion),
           !prev.producer && Boolean(nextProducer),
@@ -1781,6 +1829,7 @@ export default function App() {
         ].filter(Boolean).length;
         return {
           ...prev,
+          title: nextTitle,
           year: nextYear,
           producer: nextProducer,
           region: nextRegion,
@@ -1794,7 +1843,7 @@ export default function App() {
         });
       } else {
         setNotice({
-          text: 'OCR не смог извлечь данные для автозаполнения. Проверь качество front и наличие OCR ключа на backend.',
+          text: 'OCR не смог извлечь данные для автозаполнения. Проверь качество этикеток и наличие OCR ключа на backend.',
           type: 'error',
         });
       }
@@ -1815,7 +1864,7 @@ export default function App() {
   function normalizeFormWine({ asDraft = false } = {}) {
     const existingWine = selectedWineId ? wines.find((item) => item.id === selectedWineId) : null;
     const id = generateWineId(
-      { title: form.title, region: form.region || form.subtitle },
+      { title: form.title, region: form.region },
       wines.filter((item) => item.id !== selectedWineId),
       normalizeString(existingWine?.id || form.id || selectedWineId || '')
     );
@@ -1826,7 +1875,7 @@ export default function App() {
         ? existingWine.targetIndex
         : getNextFreeTargetIndex(wines);
     const title = normalizeString(form.title);
-    const subtitle = normalizeString(form.subtitle);
+    const subtitle = normalizeString(form.region || form.subtitle);
     const producer = normalizeString(form.producer);
     const region = normalizeString(form.region);
     const year = normalizeString(form.year);
@@ -1836,8 +1885,8 @@ export default function App() {
     const serving = normalizeString(form.serving);
     const rating = Number.parseFloat(form.rating);
 
-    if (!asDraft && (!title || !subtitle || !story || !serving)) {
-      throw new Error('Заполни заголовок, подзаголовок, историю и подачу.');
+    if (!asDraft && (!title || !story || !serving)) {
+      throw new Error('Заполни наименование, историю и подачу.');
     }
 
     if (!Number.isFinite(rating) || rating < 0 || rating > 5) {
@@ -2062,7 +2111,7 @@ export default function App() {
           <>
             <section className="panel scanner-panel">
               <div className="content-state">
-                <p className="eyebrow">{contentWine.subtitle}</p>
+                <p className="eyebrow">{contentWine.region || contentWine.producer || ''}</p>
                 <h2>{contentWine.title}</h2>
                 <p>{contentWine.story}</p>
                 <p className="meta">{contentWine.serving}</p>
@@ -2179,7 +2228,7 @@ export default function App() {
                   {sortedWines.map((wine) => (
                     <button key={wine.id} className="wine-card" onClick={() => handleSelectWine(wine)}>
                       <div className="wine-item-title">{wine.title || wine.id}</div>
-                      <div className="wine-item-subtitle">{wine.subtitle || 'Без подзаголовка'}</div>
+                      <div className="wine-item-subtitle">{wine.region || wine.producer || 'Без региона'}</div>
                       <div className="wine-item-meta">
                         {wine.status === 'draft' ? 'Черновик' : 'Опубликовано'} · Рейтинг: {wine.rating.toFixed(1)} / 5
                       </div>
@@ -2192,8 +2241,7 @@ export default function App() {
             {adminView === 'detail' && selectedWine && (
               <div className="admin-detail">
                 <div className="detail-grid">
-                  <p><strong>Название:</strong> {selectedWine.title}</p>
-                  <p><strong>Регион:</strong> {selectedWine.subtitle}</p>
+                  <p><strong>Наименование:</strong> {selectedWine.title}</p>
                   <p><strong>Производитель:</strong> {selectedWine.producer || '—'}</p>
                   <p><strong>Апелласьон/регион:</strong> {selectedWine.region || '—'}</p>
                   <p><strong>Год:</strong> {selectedWine.year || '—'}</p>
@@ -2249,13 +2297,8 @@ export default function App() {
                   </label>
 
                   <label className="field field-wide">
-                    <span>Заголовок</span>
+                    <span>Наименование</span>
                     <input name="title" value={form.title} onChange={handleFormChange} required />
-                  </label>
-
-                  <label className="field field-wide">
-                    <span>Подзаголовок</span>
-                    <input name="subtitle" value={form.subtitle} onChange={handleFormChange} required />
                   </label>
 
                   <label className="field">
