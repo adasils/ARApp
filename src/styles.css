@@ -890,10 +890,10 @@ h2 {
 }
 
 .app-shell.is-admin .panel.admin-panel {
-  background: #f7f7f8;
+  background: linear-gradient(180deg, #fcfcfd 0%, #f6f7f9 100%);
   border: 1px solid #e7e1e1;
   border-radius: 22px;
-  box-shadow: 0 16px 36px rgba(10, 18, 36, 0.08);
+  box-shadow: 0 14px 34px rgba(10, 18, 36, 0.08);
 }
 
 .app-shell.is-admin .panel.admin-panel::before {
@@ -917,9 +917,15 @@ h2 {
   font-size: 1.5rem;
 }
 
+.admin-title-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
 .admin-panel h2 {
   color: #131b31;
   font-size: clamp(1.5rem, 3vw, 2.2rem);
+  letter-spacing: -0.02em;
 }
 
 .admin-panel .eyebrow {
@@ -937,19 +943,48 @@ h2 {
   background: #fff;
 }
 
+.admin-bell {
+  padding-inline: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .admin-mobile-shell {
   position: relative;
   padding-bottom: 84px;
+  gap: 16px;
 }
 
 .admin-search-box input {
   width: 100%;
-  border: 1px solid #dbe0ea;
-  border-radius: 20px;
-  padding: 13px 16px;
+  border: 1px solid #d9dfe9;
+  border-radius: 18px;
+  padding: 14px 16px;
   background: #fff;
   font-size: 1.02rem;
   color: #8b97ac;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 2px 6px rgba(23, 35, 58, 0.04);
+  padding-left: 46px;
+}
+
+.admin-search-box input:focus {
+  outline: none;
+  border-color: #d72538;
+  box-shadow: 0 0 0 3px rgba(215, 37, 56, 0.12);
+}
+
+.admin-search-box {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #da6e7a;
+  pointer-events: none;
 }
 
 .admin-tabs {
@@ -978,22 +1013,29 @@ h2 {
 
 .catalog-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .catalog-row {
   width: 100%;
-  border: 0;
-  border-bottom: 1px solid #eceef2;
+  border: 1px solid #eceff4;
   background: #fff;
-  border-radius: 16px;
-  padding: 10px;
+  border-radius: 18px;
+  padding: 10px 10px 10px 10px;
   display: grid;
   gap: 12px;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
+  grid-template-columns: 76px minmax(0, 1fr) auto auto;
   align-items: center;
   text-align: left;
   cursor: pointer;
+  box-shadow: 0 6px 18px rgba(22, 34, 59, 0.06);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.catalog-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(22, 34, 59, 0.1);
+  border-color: #dce3ef;
 }
 
 .catalog-thumb {
@@ -1017,6 +1059,8 @@ h2 {
 .catalog-main .wine-item-title {
   color: #11192e;
   font-size: 1.16rem;
+  line-height: 1.15;
+  font-weight: 750;
 }
 
 .catalog-main .wine-item-subtitle {
@@ -1024,6 +1068,7 @@ h2 {
   text-transform: uppercase;
   font-size: 0.8rem;
   letter-spacing: 0.05em;
+  margin-top: 6px;
 }
 
 .catalog-badge {
@@ -1032,6 +1077,7 @@ h2 {
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .catalog-badge.is-published {
@@ -1042,6 +1088,14 @@ h2 {
 .catalog-badge.is-draft {
   color: #9f6c00;
   background: #f9eec3;
+}
+
+.catalog-arrow {
+  color: #9aa8bd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px;
 }
 
 .admin-fab {
@@ -1056,7 +1110,7 @@ h2 {
   color: #fff;
   font-size: 2.1rem;
   line-height: 1;
-  box-shadow: 0 14px 28px rgba(181, 22, 37, 0.35);
+  box-shadow: 0 14px 28px rgba(181, 22, 37, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.36);
   cursor: pointer;
   z-index: 25;
 }
@@ -1067,7 +1121,7 @@ h2 {
   right: 12px;
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   border: 1px solid #dbe2ed;
-  border-radius: 14px;
+  border-radius: 16px;
   background: #fff;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1080,19 +1134,30 @@ h2 {
   background: transparent;
   color: #60718f;
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
   padding: 12px 8px;
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .admin-bottom-nav button.is-active {
   color: #df0e1f;
 }
 
+.admin-bottom-nav button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .wizard-progress-wrap {
   display: grid;
   gap: 8px;
-  padding: 10px 0 4px;
+  padding: 4px 0 8px;
 }
 
 .wizard-progress-head {
@@ -1101,6 +1166,7 @@ h2 {
   align-items: center;
   font-size: 0.84rem;
   color: #8a95a8;
+  font-weight: 600;
 }
 
 .wizard-progress-track {
@@ -1123,6 +1189,27 @@ h2 {
   gap: 12px;
 }
 
+.quick-tip-box {
+  border: 1px solid #f0d3d7;
+  background: #fff6f7;
+  color: #6b748a;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.quick-tip-box strong {
+  display: block;
+  color: #cc1426;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.quick-tip-box p {
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .upload-slot {
   border: 1px solid #e4ccd0;
   background: #fff;
@@ -1131,6 +1218,12 @@ h2 {
   text-align: left;
   padding: 0;
   cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.upload-slot:hover {
+  border-color: #ebb3ba;
+  box-shadow: 0 8px 20px rgba(184, 33, 51, 0.08);
 }
 
 .upload-slot img {
@@ -1165,6 +1258,7 @@ h2 {
 .upload-slot-foot span {
   color: #da1020;
   font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .upload-slot.is-ready .upload-slot-foot span {
@@ -1190,6 +1284,7 @@ h2 {
   border: 1px solid #d4dbe6;
   background: #fff;
   color: #1a2337;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .app-shell.is-admin .primary-btn {
@@ -1209,6 +1304,11 @@ h2 {
     padding-bottom: 8px;
   }
 
+  .admin-overview.admin-mobile-shell {
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
   .wizard-upload-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1216,6 +1316,28 @@ h2 {
   .upload-slot img,
   .upload-placeholder {
     height: 180px;
+  }
+}
+
+@media (max-width: 600px) {
+  .admin-panel {
+    padding: 14px;
+  }
+
+  .admin-header {
+    padding-bottom: 12px;
+  }
+
+  .admin-title-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 1.25rem;
+  }
+
+  .admin-head-actions .ghost-btn {
+    padding: 9px 11px;
+    font-size: 0.86rem;
   }
 }
 

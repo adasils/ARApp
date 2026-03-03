@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, Bell, ChevronRight, LayoutGrid, ScanLine, Search, Settings, Wine } from 'lucide-react';
 import { apiFetch, getApiBaseUrl } from './lib/api.js';
 import { sha256HexFromArrayBuffer } from './lib/hash.js';
 
@@ -2231,7 +2232,7 @@ export default function App() {
           <section className="panel admin-panel">
             <div className="admin-header">
               <div className="admin-title-wrap">
-                <div className="admin-title-icon">🍷</div>
+                <div className="admin-title-icon"><Wine size={26} strokeWidth={2.1} /></div>
                 <div>
                 <p className="eyebrow">Vinoria Admin</p>
                 <h2>
@@ -2243,6 +2244,9 @@ export default function App() {
                 </div>
               </div>
               <div className="actions-row admin-head-actions">
+                <button className="ghost-btn admin-bell" type="button" aria-label="Уведомления">
+                  <Bell size={18} />
+                </button>
                 <button className="ghost-btn" type="button" onClick={handleAdminLogout}>
                   Выйти
                 </button>
@@ -2254,6 +2258,7 @@ export default function App() {
             {adminView === 'list' && (
               <div className="admin-overview admin-mobile-shell">
                 <div className="admin-search-box">
+                  <Search size={18} className="search-icon" />
                   <input
                     type="search"
                     placeholder="Search wine labels, vintages..."
@@ -2301,6 +2306,7 @@ export default function App() {
                         <div className={`catalog-badge ${wine.status === 'draft' ? 'is-draft' : 'is-published'}`}>
                           {wine.status === 'draft' ? 'DRAFT' : 'PUBLISHED'}
                         </div>
+                        <div className="catalog-arrow"><ChevronRight size={18} /></div>
                       </button>
                     );
                   })}
@@ -2309,10 +2315,10 @@ export default function App() {
                   +
                 </button>
                 <div className="admin-bottom-nav">
-                  <button type="button" className="is-active">Catalog</button>
-                  <button type="button">Analytics</button>
-                  <button type="button" onClick={closeAdmin}>Scanner</button>
-                  <button type="button" onClick={handleDownloadJson}>Export</button>
+                  <button type="button" className="is-active"><LayoutGrid size={18} />Catalog</button>
+                  <button type="button"><BarChart3 size={18} />Analytics</button>
+                  <button type="button" onClick={closeAdmin}><ScanLine size={18} />Scanner</button>
+                  <button type="button" onClick={handleDownloadJson}><Settings size={18} />Export</button>
                 </div>
                 <div className="admin-actions-row">
                   <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
@@ -2440,6 +2446,10 @@ export default function App() {
                   <div className="field field-wide">
                     <span>Upload wine labels from 3 sides</span>
                     <p className="field-note">Please provide clear images of the bottle packaging.</p>
+                    <div className="quick-tip-box">
+                      <strong>Quick Tips</strong>
+                      <p>Ensure lighting is consistent. Use high-resolution JPG or PNG (max 5MB).</p>
+                    </div>
                     <div className="wizard-upload-grid">
                       {REQUIRED_LABEL_ROLES.map((role) => {
                         const asset = getAssetByRole(role);
