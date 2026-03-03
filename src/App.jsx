@@ -185,8 +185,8 @@ function extractPrefillFromOcr(rawText) {
   const compact = source.replace(/\s+/g, ' ').trim();
   const yearMatch = compact.match(/\b(19|20)\d{2}\b/g) || [];
   const year = yearMatch.length ? yearMatch[0] : '';
-
-  const producerCandidate = lines.find((line, index) => index > 0 && /[A-Za-zА-Яа-я]/.test(line) && !/\b(19|20)\d{2}\b/.test(line)) || '';
+  const producerHints = /(producer|produced|estate|estates|winery|vineyards|domaine|domaines|tenuta|cantina|chateau|maison|cellars|bodegas|azienda|vignobles|family|finca)/i;
+  const skipHints = /\b(19|20)\d{2}\b|alc\.?|vol\.?|ml\b|cl\b|contains sulfites|mis en bouteille|appellation|denominacion/i;
 
   const regions = [
     'bordeaux', 'burgundy', 'tuscany', 'piedmont', 'rioja', 'champagne', 'provence',
@@ -204,6 +204,23 @@ function extractPrefillFromOcr(rawText) {
   const foundGrapes = grapesDictionary
     .filter((grape) => lower.includes(grape))
     .slice(0, 3);
+  const grapesRegex = new RegExp(grapesDictionary.map((item) => item.replace(/\s+/g, '\\s+')).join('|'), 'i');
+  const regionRegex = new RegExp(regions.join('|'), 'i');
+  const cleanedLines = lines
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length >= 3)
+    .filter((line) => !skipHints.test(line))
+    .filter((line) => !grapesRegex.test(line))
+    .filter((line) => !regionRegex.test(line));
+
+  let producerCandidate = cleanedLines.find((line) => producerHints.test(line)) || '';
+  if (!producerCandidate) {
+    const longCandidates = cleanedLines.filter((line) => line.length >= 8);
+    producerCandidate = longCandidates.slice(1).find(Boolean) || longCandidates[0] || '';
+  }
+  if (producerCandidate && producerCandidate === cleanedLines[0] && cleanedLines.length > 1) {
+    producerCandidate = cleanedLines[1];
+  }
 
   return {
     year,
