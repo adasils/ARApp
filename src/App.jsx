@@ -10,7 +10,7 @@ const DONE_MS = 900;
 const MINDAR_TIMEOUT_MS = 3200;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
-const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
+const LABEL_ROLES = ['front', 'left', 'right'];
 const REQUIRED_LABEL_ROLES = ['front', 'left', 'right'];
 const COMPILE_IMAGE_MAX_SIDE = 1200;
 const COMPILE_IMAGE_QUALITY = 0.82;
@@ -113,15 +113,6 @@ function deriveLabelFieldsFromAssets(assets) {
     qualityStatus: primary?.qualityStatus || 'unknown',
     qualityNotes: Array.isArray(primary?.qualityNotes) ? primary.qualityNotes : [],
   };
-}
-
-function pickNextRole(existingAssets, index = 0) {
-  const used = new Set((existingAssets || []).map((asset) => asset.role));
-  const available = LABEL_ROLES.find((role) => !used.has(role));
-  if (available) {
-    return available;
-  }
-  return LABEL_ROLES[Math.min(index, LABEL_ROLES.length - 1)];
 }
 
 function normalizeWine(wine, fallbackIndex) {
@@ -547,7 +538,7 @@ export default function App() {
   const [adminAuthError, setAdminAuthError] = useState('');
   const [mindBuildStatus, setMindBuildStatus] = useState({ phase: 'idle', progress: 0, text: '' });
   const [arBooted, setArBooted] = useState(false);
-  const [labelWizard, setLabelWizard] = useState({ open: false, step: 0 });
+  const [labelModal, setLabelModal] = useState({ open: false, role: 'front' });
 
   const sortedWines = useMemo(() => {
     return [...wines].sort((a, b) => {
@@ -1217,44 +1208,43 @@ export default function App() {
     });
   }
 
-  function openLabelWizard(startStep = 0) {
-    setLabelWizard({
+  function openLabelModal(role) {
+    const safeRole = REQUIRED_LABEL_ROLES.includes(role) ? role : 'front';
+    const existing = getAssetByRole(safeRole);
+    if (existing?.id) {
+      openCropEditor(existing.id);
+    } else {
+      setCropEditor({ assetId: '', x: 0, y: 0, width: 100, height: 100 });
+    }
+    setLabelModal({
       open: true,
-      step: Math.max(0, Math.min(REQUIRED_LABEL_ROLES.length - 1, startStep)),
+      role: safeRole,
     });
     setNotice({ text: '', type: '' });
   }
 
-  function closeLabelWizard() {
-    setLabelWizard({ open: false, step: 0 });
+  function closeLabelModal() {
+    setLabelModal({ open: false, role: 'front' });
   }
 
-  function confirmWizardStep() {
-    const role = REQUIRED_LABEL_ROLES[labelWizard.step];
+  function saveAndCloseLabelModal() {
+    const role = labelModal.role;
     const asset = getAssetByRole(role);
     if (!asset?.dataUrl) {
-      setNotice({ text: `Сначала загрузи и проверь фото для шага ${role}.`, type: 'error' });
+      setNotice({ text: `Сначала загрузи и проверь фото для ракурса ${role}.`, type: 'error' });
       return;
     }
-    if (labelWizard.step < REQUIRED_LABEL_ROLES.length - 1) {
-      setLabelWizard((prev) => ({ ...prev, step: prev.step + 1 }));
-      return;
-    }
-    closeLabelWizard();
-    setNotice({ text: 'Обязательные ракурсы загружены: front/left/right.', type: 'success' });
+    closeLabelModal();
+    setNotice({ text: `Ракурс ${role} сохранен.`, type: 'success' });
   }
 
-  function goWizardBack() {
-    setLabelWizard((prev) => ({ ...prev, step: Math.max(0, prev.step - 1) }));
-  }
-
-  async function handleWizardRoleUpload(event) {
+  async function handleRoleModalUpload(event) {
     const file = Array.from(event.target.files || [])[0];
     event.target.value = '';
     if (!file) {
       return;
     }
-    const role = REQUIRED_LABEL_ROLES[labelWizard.step];
+    const role = labelModal.role;
     try {
       const optimized = await optimizeLabelImage(file);
       const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
@@ -1276,63 +1266,9 @@ export default function App() {
         targetIndex: null,
         error: '',
       });
+      setNotice({ text: `Фото ${role} загружено. Проверь crop и нажми «Сохранить ракурс».`, type: 'success' });
     } catch (error) {
       setNotice({ text: error.message || 'Не удалось загрузить фото для шага.', type: 'error' });
-    }
-  }
-
-  async function handleLabelImageUpload(event) {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) {
-      return;
-    }
-
-    try {
-      const builtAssets = [];
-      for (let i = 0; i < files.length; i += 1) {
-        const file = files[i];
-        const optimized = await optimizeLabelImage(file);
-        const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
-        const quality = await assessLabelQuality(optimized.dataUrl);
-        builtAssets.push({
-          id: crypto.randomUUID(),
-          role: '',
-          dataUrl: optimized.dataUrl,
-          qualityScore: quality.score,
-          qualityStatus: quality.status,
-          qualityNotes: quality.notes,
-          visualEmbedding,
-          meta: optimized,
-        });
-      }
-
-      setForm((prev) => {
-        const existing = normalizeLabelAssets(prev.labelAssets);
-        const enriched = builtAssets.map((asset, index) => ({
-          ...asset,
-          role: pickNextRole([...existing, ...builtAssets.slice(0, index)], index),
-        }));
-        const labelAssets = [...existing, ...enriched];
-        return {
-          ...prev,
-          ...deriveLabelFieldsFromAssets(labelAssets),
-        };
-      });
-
-      setLabelProcess({
-        jobId: null,
-        status: 'idle',
-        targetIndex: null,
-        error: '',
-      });
-
-      const reducedCount = builtAssets.filter((asset) => asset.meta?.reduced).length;
-      setNotice({
-        text: `Добавлено фото: ${builtAssets.length}. Оптимизировано: ${reducedCount}.`,
-        type: 'success',
-      });
-    } catch (error) {
-      setNotice({ text: error.message || 'Не удалось подготовить файлы этикеток.', type: 'error' });
     }
   }
 
@@ -1368,6 +1304,14 @@ export default function App() {
       targetIndex: null,
       error: '',
     });
+  }
+
+  function handleClearRoleAsset(role) {
+    const target = getAssetByRole(role);
+    if (!target?.id) {
+      return;
+    }
+    handleRemoveLabelAsset(target.id);
   }
 
   function openCropEditor(assetId) {
@@ -1491,7 +1435,7 @@ export default function App() {
           }] : []);
         return sourceAssets.map((asset) => ({
           wineId: wine.id,
-          role: asset.role || 'alt',
+          role: asset.role || 'front',
           dataUrl: asset.dataUrl,
         })).filter((asset) => asset.dataUrl);
       });
@@ -2062,9 +2006,7 @@ export default function App() {
                   <div className="field field-wide">
                     <span>Этикетки (мастер: front → left → right)</span>
                     <div className="label-upload-row">
-                      <button className="primary-btn" type="button" onClick={() => openLabelWizard(0)}>
-                        Открыть мастер этикеток
-                      </button>
+                      <span className="field-note">Нажми на нужный ракурс ниже: загрузка и crop откроются в модальном окне.</span>
                       {!!form.labelAssets?.length && (
                         <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
                           Убрать все
@@ -2072,44 +2014,25 @@ export default function App() {
                       )}
                     </div>
                     <div className="wizard-status-row">
-                      {REQUIRED_LABEL_ROLES.map((role, index) => {
+                      {REQUIRED_LABEL_ROLES.map((role) => {
                         const asset = getAssetByRole(role);
                         return (
                           <button
                             key={role}
                             type="button"
                             className={`wizard-pill ${asset?.dataUrl ? 'is-done' : ''}`}
-                            onClick={() => openLabelWizard(index)}
+                            onClick={() => openLabelModal(role)}
                           >
                             {asset?.dataUrl ? '✅' : '○'} {role}
                           </button>
                         );
                       })}
                     </div>
-                    {labelWizard.open && (
-                      <div className="wizard-box">
-                        <p className="field-note">
-                          Шаг {labelWizard.step + 1} из {REQUIRED_LABEL_ROLES.length}: загрузи ракурс <strong>{REQUIRED_LABEL_ROLES[labelWizard.step]}</strong>, затем при необходимости обрежь.
-                        </p>
-                        <div className="label-upload-row">
-                          <input type="file" accept="image/*" onChange={handleWizardRoleUpload} />
-                          <button className="ghost-btn" type="button" onClick={goWizardBack} disabled={labelWizard.step === 0}>
-                            Назад
-                          </button>
-                          <button className="primary-btn" type="button" onClick={confirmWizardStep}>
-                            {labelWizard.step === REQUIRED_LABEL_ROLES.length - 1 ? 'Завершить' : 'Далее'}
-                          </button>
-                          <button className="ghost-btn" type="button" onClick={closeLabelWizard}>
-                            Закрыть
-                          </button>
-                        </div>
-                      </div>
-                    )}
                     {!!form.labelAssets?.length && (
                       <div className="wine-grid">
                         {form.labelAssets.map((asset) => (
                           <div key={asset.id} className="wine-card">
-                            <p className="field-note"><strong>{asset.role || 'alt'}</strong></p>
+                            <p className="field-note"><strong>{asset.role || 'front'}</strong></p>
                             <img className="label-preview" src={asset.dataUrl} alt={`Этикетка ${asset.role}`} />
                             <p className="field-note">
                               {asset.qualityStatus === 'good' && `✅ ${asset.qualityScore}/100`}
@@ -2118,78 +2041,12 @@ export default function App() {
                               {asset.qualityStatus === 'unknown' && '—'}
                             </p>
                             <div className="actions-row">
-                              <button className="ghost-btn" type="button" onClick={() => openCropEditor(asset.id)}>
-                                Обрезать
+                              <button className="ghost-btn" type="button" onClick={() => openLabelModal(asset.role)}>
+                                Открыть
                               </button>
-                              {!REQUIRED_LABEL_ROLES.includes(asset.role) && (
-                                <button className="ghost-btn" type="button" onClick={() => handleRemoveLabelAsset(asset.id)}>
-                                  Удалить
-                                </button>
-                              )}
                             </div>
                           </div>
                         ))}
-                      </div>
-                    )}
-                    <div className="label-upload-row">
-                      <input type="file" accept="image/*" multiple onChange={handleLabelImageUpload} />
-                      <span className="field-note">Опционально: добавь `closeup`/`alt` фото для fallback.</span>
-                    </div>
-                    {selectedCropAsset && (
-                      <div className="detail-grid">
-                        <p className="detail-wide"><strong>Crop editor:</strong> {selectedCropAsset.role}</p>
-                        <label className="field detail-wide">
-                          <span>X (%)</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="95"
-                            value={cropEditor.x}
-                            onChange={(event) => setCropEditor((prev) => ({ ...prev, x: Number(event.target.value) }))}
-                          />
-                        </label>
-                        <label className="field detail-wide">
-                          <span>Y (%)</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="95"
-                            value={cropEditor.y}
-                            onChange={(event) => setCropEditor((prev) => ({ ...prev, y: Number(event.target.value) }))}
-                          />
-                        </label>
-                        <label className="field detail-wide">
-                          <span>Width (%)</span>
-                          <input
-                            type="range"
-                            min="5"
-                            max={100 - cropEditor.x}
-                            value={cropEditor.width}
-                            onChange={(event) => setCropEditor((prev) => ({ ...prev, width: Number(event.target.value) }))}
-                          />
-                        </label>
-                        <label className="field detail-wide">
-                          <span>Height (%)</span>
-                          <input
-                            type="range"
-                            min="5"
-                            max={100 - cropEditor.y}
-                            value={cropEditor.height}
-                            onChange={(event) => setCropEditor((prev) => ({ ...prev, height: Number(event.target.value) }))}
-                          />
-                        </label>
-                        <div className="actions-row">
-                          <button className="primary-btn" type="button" onClick={applyCropToAsset}>
-                            Применить crop
-                          </button>
-                          <button
-                            className="ghost-btn"
-                            type="button"
-                            onClick={() => setCropEditor({ assetId: '', x: 0, y: 0, width: 100, height: 100 })}
-                          >
-                            Закрыть
-                          </button>
-                        </div>
                       </div>
                     )}
                     {form.qualityStatus !== 'unknown' && (
@@ -2270,6 +2127,99 @@ export default function App() {
               </form>
             )}
           </section>
+        )}
+
+        {labelModal.open && (
+          <div className="label-modal-backdrop" role="dialog" aria-modal="true">
+            <div className="label-modal">
+              <div className="label-modal-header">
+                <h3>Ракурс: {labelModal.role}</h3>
+                <button className="ghost-btn" type="button" onClick={closeLabelModal}>
+                  Закрыть
+                </button>
+              </div>
+              <p className="field-note">
+                Загрузи фото, затем выдели область этикетки и нажми «Применить crop».
+              </p>
+              <div className="label-upload-row">
+                <input type="file" accept="image/*" onChange={handleRoleModalUpload} />
+                <button className="ghost-btn" type="button" onClick={() => handleClearRoleAsset(labelModal.role)}>
+                  Очистить ракурс
+                </button>
+              </div>
+
+              {getAssetByRole(labelModal.role)?.dataUrl && (
+                <>
+                  <div className="crop-stage">
+                    <img
+                      className="crop-stage-image"
+                      src={getAssetByRole(labelModal.role)?.dataUrl}
+                      alt={`Этикетка ${labelModal.role}`}
+                    />
+                    <div
+                      className="crop-stage-box"
+                      style={{
+                        left: `${cropEditor.x}%`,
+                        top: `${cropEditor.y}%`,
+                        width: `${cropEditor.width}%`,
+                        height: `${cropEditor.height}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="form-grid">
+                    <label className="field field-wide">
+                      <span>X (%)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="95"
+                        value={cropEditor.x}
+                        onChange={(event) => setCropEditor((prev) => ({ ...prev, x: Number(event.target.value) }))}
+                      />
+                    </label>
+                    <label className="field field-wide">
+                      <span>Y (%)</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="95"
+                        value={cropEditor.y}
+                        onChange={(event) => setCropEditor((prev) => ({ ...prev, y: Number(event.target.value) }))}
+                      />
+                    </label>
+                    <label className="field field-wide">
+                      <span>Width (%)</span>
+                      <input
+                        type="range"
+                        min="5"
+                        max={100 - cropEditor.x}
+                        value={cropEditor.width}
+                        onChange={(event) => setCropEditor((prev) => ({ ...prev, width: Number(event.target.value) }))}
+                      />
+                    </label>
+                    <label className="field field-wide">
+                      <span>Height (%)</span>
+                      <input
+                        type="range"
+                        min="5"
+                        max={100 - cropEditor.y}
+                        value={cropEditor.height}
+                        onChange={(event) => setCropEditor((prev) => ({ ...prev, height: Number(event.target.value) }))}
+                      />
+                    </label>
+                  </div>
+                  <div className="actions-row">
+                    <button className="primary-btn" type="button" onClick={applyCropToAsset}>
+                      Применить crop
+                    </button>
+                    <button className="primary-btn" type="button" onClick={saveAndCloseLabelModal}>
+                      Сохранить ракурс
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
       </main>
     </>
