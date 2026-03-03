@@ -436,7 +436,7 @@ async function extractOcrTextFromImage(dataUrl, env) {
   return parsed
     .map((item) => String(item?.ParsedText || '').trim())
     .filter(Boolean)
-    .join(' ');
+    .join('\n');
 }
 
 export default {
@@ -639,13 +639,11 @@ export default {
     if (url.pathname === '/api/recognize/ocr' && request.method === 'POST') {
       try {
         const payload = await request.json();
-        const provided = normalizeQueryText(payload?.ocr_text || '');
-        const fallbackOcr = provided
-          ? ''
-          : normalizeQueryText(await extractOcrTextFromImage(String(payload?.image_base64 || ''), env));
-        const queryText = provided || fallbackOcr;
+        const providedRaw = String(payload?.ocr_text || '').trim();
+        const rawOcrText = providedRaw || await extractOcrTextFromImage(String(payload?.image_base64 || ''), env);
+        const queryText = normalizeQueryText(rawOcrText);
         if (!queryText) {
-          return json({ matches: [], best: null });
+          return json({ matches: [], best: null, ocr_text: '', ocr_text_raw: rawOcrText || '' });
         }
 
         const wines = normalizeWines(await getWines(env));
@@ -666,7 +664,7 @@ export default {
           ? { wine_id: matches[0].wine_id, score: matches[0].score }
           : null;
 
-        return json({ matches, best, ocr_text: queryText });
+        return json({ matches, best, ocr_text: queryText, ocr_text_raw: rawOcrText || '' });
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
       }

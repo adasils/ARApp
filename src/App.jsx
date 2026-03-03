@@ -173,6 +173,39 @@ function parseGallery(value) {
     .filter(Boolean);
 }
 
+function extractPrefillFromOcr(rawText) {
+  const source = String(rawText || '').trim();
+  if (!source) {
+    return {};
+  }
+  const lines = source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 2);
+  const compact = source.replace(/\s+/g, ' ').trim();
+  const yearMatch = compact.match(/\b(19|20)\d{2}\b/g) || [];
+  const year = yearMatch.length ? yearMatch[0] : '';
+
+  const titleCandidate = lines.find((line) => /[A-Za-zА-Яа-я]/.test(line) && !/\b(19|20)\d{2}\b/.test(line))
+    || compact.split(' ').slice(0, 4).join(' ');
+  const producerCandidate = lines.find((line, index) => index > 0 && /[A-Za-zА-Яа-я]/.test(line) && !/\b(19|20)\d{2}\b/.test(line)) || '';
+
+  const regions = [
+    'bordeaux', 'burgundy', 'tuscany', 'piedmont', 'rioja', 'champagne', 'provence',
+    'france', 'italy', 'spain', 'chile', 'argentina', 'georgia', 'australia',
+    'portugal', 'germany', 'austria', 'california', 'sonoma', 'napa', 'russia',
+  ];
+  const lower = compact.toLowerCase();
+  const region = regions.find((item) => lower.includes(item)) || '';
+
+  return {
+    title: titleCandidate ? titleCandidate.slice(0, 80) : '',
+    year,
+    producer: producerCandidate ? producerCandidate.slice(0, 80) : '',
+    region: region || '',
+  };
+}
+
 function toIdSlug(value) {
   return String(value || '')
     .toLowerCase()
@@ -1670,6 +1703,42 @@ export default function App() {
     }
   }
 
+  async function handleAutofillFromLabel() {
+    const front = getAssetByRole('front');
+    if (!front?.dataUrl) {
+      setNotice({ text: 'Сначала загрузи ракурс front.', type: 'error' });
+      return;
+    }
+    try {
+      setNotice({ text: 'Распознаем текст с этикетки...', type: 'success' });
+      const payload = await apiFetch('/api/recognize/ocr', {
+        method: 'POST',
+        body: JSON.stringify({
+          image_base64: front.dataUrl,
+          ocr_text: '',
+          locale_hint: 'ru',
+        }),
+      });
+      const parsed = extractPrefillFromOcr(payload?.ocr_text_raw || payload?.ocr_text || '');
+      setForm((prev) => {
+        const nextTitle = prev.title || parsed.title || '';
+        const nextYear = prev.year || parsed.year || '';
+        const nextRegion = prev.region || parsed.region || '';
+        return {
+          ...prev,
+          title: nextTitle,
+          year: nextYear,
+          producer: prev.producer || parsed.producer || '',
+          region: nextRegion,
+          subtitle: prev.subtitle || [nextRegion, nextYear].filter(Boolean).join(', '),
+        };
+      });
+      setNotice({ text: 'Поля заполнены из этикетки. Проверь и поправь при необходимости.', type: 'success' });
+    } catch (error) {
+      setNotice({ text: error.message || 'Не удалось распознать текст этикетки.', type: 'error' });
+    }
+  }
+
   function normalizeFormWine() {
     const existingWine = selectedWineId ? wines.find((item) => item.id === selectedWineId) : null;
     const id = generateWineId(
@@ -2227,6 +2296,9 @@ export default function App() {
                       После front/left/right нажми «Обработать этикетку», затем «Сохранить».
                     </p>
                     <div className="actions-row">
+                      <button className="ghost-btn" type="button" onClick={handleAutofillFromLabel}>
+                        Автозаполнить из этикетки
+                      </button>
                       <button className="primary-btn" type="button" onClick={handleProcessLabel}>
                         Обработать этикетку
                       </button>
