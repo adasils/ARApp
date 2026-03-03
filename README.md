@@ -1,148 +1,63 @@
-# Wine Label AR + Admin Dashboard
+# Vinoria AR
 
-Проект переведен на `Vite + React` и готов к деплою на GitHub Pages.
+Production setup:
+- Frontend (Cloudflare Pages): `https://vinoria.app`
+- Backend (Cloudflare Worker route): `https://vinoria.app/api/*`
+- Storage: Cloudflare KV + Cloudflare R2
 
-## Что есть сейчас
-- AR-сканер этикетки через MindAR
-- Контент-карточка вина после распознавания
-- Админка для добавления/редактирования/удаления вин
-- Опциональный API-режим через Cloudflare Worker (бесплатный backend)
-- Экспорт актуального `wines.json`
-- Локальное сохранение правок в `localStorage`
+## API (current)
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `GET /api/wines`
+- `POST /api/wines`
+- `PUT /api/wines`
+- `GET /api/wines/:id`
+- `PUT /api/wines/:id`
+- `DELETE /api/wines/:id`
+- `POST /api/admin/mind/presign-put`
+- `GET /api/mind/latest`
+- `POST /api/recognize/ocr`
+- `POST /api/recognize/visual`
+- `GET /api/labels/records`
+- `GET /api/health`
 
-## Локальный запуск
+## Auth
+Admin password is stored in Worker secret:
+- `ADMIN_PASSWORD`
 
+Session cookie settings:
+- `HttpOnly`
+- `Secure`
+- `SameSite=Lax`
+- `Path=/`
+
+## Required Worker secrets/vars
+- `ADMIN_PASSWORD`
+- `CF_ACCOUNT_ID`
+- `R2_BUCKET`
+- `R2_ACCESS_KEY_ID`
+- `R2_SECRET_ACCESS_KEY`
+- `R2_PUBLIC_BASE_URL` (optional, if using public R2 domain)
+- `TARGETS_ADMIN_KEY` (optional, service/admin header access)
+- `OCR_SPACE_API_KEY` (optional, OCR provider)
+- `ALLOWED_ORIGIN` (optional, comma-separated allowlist)
+
+## Local dev
 ```bash
 npm install
 npm run dev
 ```
 
-Открой адрес из Vite (обычно `http://localhost:5173`).
-
-Если хочешь включить backend API:
-1. Скопируй `.env.example` в `.env`
-2. Заполни `VITE_API_BASE_URL`
-3. Перезапусти `npm run dev`
-
-## Production build
-
-```bash
-npm run build
-npm run preview
-```
-
-Сборка лежит в `dist/`.
-
-## Структура папок (важно)
-
-- `src/` — исходный код приложения (React, CSS, компоненты)
-- `public/` — статические файлы, которые копируются в сборку как есть
-- `dist/` — результат `npm run build` (генерируется автоматически, руками не редактируем)
-- `worker/` — Cloudflare Worker API (CRUD для вин)
-
-Куда класть картинку для стартового фона:
-- `public/images/start-bg.svg` (можно заменить на `start-bg.jpg/png` и поменять путь в `src/App.jsx`)
-
-## Деплой на GitHub Pages
-
-Проект использует `base: "./"` в `vite.config.js`, поэтому собранные ассеты работают в Pages без жесткой привязки к имени репозитория.
-
-Базовый сценарий:
-1. Выполни `npm run build`
-2. Опубликуй содержимое `dist/` в ветку/папку, которую использует GitHub Pages
-
-## Бесплатный backend (Cloudflare Worker)
-
-В проекте есть готовый Worker API:
-- `GET /health`
-- `GET /wines`
-- `POST /wines`
-- `PUT /wines`
-- `PUT /wines/:id`
-- `DELETE /wines/:id`
-- `POST /labels/process` (запуск обработки фото этикетки)
-- `GET /labels/process/:jobId` (статус обработки)
-- `GET /targets/manifest` (статус compiled targets)
-- `GET /targets/mind` (актуальный `.mind` для сканера)
-
-### Быстрый запуск API
-
+Worker:
 ```bash
 cd worker
 npm install
-npx wrangler kv namespace create WINES_KV
-npx wrangler kv namespace create WINES_KV --preview
+npx wrangler dev
 ```
 
-Скопируй выданные `id` и `preview_id` в `worker/wrangler.toml`.
-
-Дальше:
-
+## Build
 ```bash
-npm run dev
+npm run build
 ```
 
-После деплоя (`npm run deploy`) пропиши URL воркера в `.env`:
-
-```bash
-VITE_API_BASE_URL=https://<your-worker>.workers.dev
-```
-
-Если `VITE_API_BASE_URL` пустой, админка работает в прежнем режиме через `localStorage`.
-
-### Flow обработки этикетки в админке
-1. Загрузи фото этикетки
-2. Нажми `Обработать этикетку`
-3. Дождись статуса `Готово`
-4. Сохрани карточку вина
-
-## Автоматическая сборка `.mind` (без ручной компиляции)
-
-Workflow: [compile-mind-targets.yml](/Users/alenanzarova/GitHub/ARApp/.github/workflows/compile-mind-targets.yml)
-- запускается по расписанию каждые 5 минут и вручную (`workflow_dispatch`)
-- забирает готовые этикетки из Worker
-- компилирует `targets.mind`
-- загружает результат обратно в Worker (`/targets/mind`)
-
-### GitHub Secrets для workflow
-- `WORKER_API_BASE` — URL API, например `https://wine-label-api.<subdomain>.workers.dev`
-- `TARGETS_ADMIN_KEY` — секретный ключ для сервисных endpoint'ов
-
-### Secret в Cloudflare Worker
-Добавь секрет `TARGETS_ADMIN_KEY` в Worker (значение должно совпадать с GitHub Secret):
-
-```bash
-wrangler secret put TARGETS_ADMIN_KEY
-```
-
-После этого новые этикетки из админки будут попадать в сканер автоматически после фоновой компиляции (обычно до 5 минут).
-
-## Формат данных
-
-`data/wines.json`
-
-```json
-{
-  "wines": [
-    {
-      "id": "wine-demo-001",
-      "targetIndex": 0,
-      "title": "Barolo Riserva 2018",
-      "subtitle": "Piemonte, Italy",
-      "story": "...",
-      "serving": "...",
-      "pairings": ["..."],
-      "gallery": ["https://..."]
-    }
-  ]
-}
-```
-
-## Как пользоваться админкой
-1. Открой вкладку `Админка`
-2. Нажми `+ Новое вино`
-3. Заполни форму и нажми `Сохранить`
-4. Для выгрузки нажми `Скачать JSON`
-5. Для возврата к demo-данным нажми `Сбросить к demo`
-
-`targetIndex` должен соответствовать индексу target в `.mind` файле MindAR.

@@ -2,11 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, getApiBaseUrl } from './lib/api.js';
 import { sha256HexFromArrayBuffer } from './lib/hash.js';
 
-const CONTENT_PATH = `${import.meta.env.BASE_URL}data/wines.json`;
-const LOCAL_STORAGE_KEY = 'wine-label-admin-data-v2';
 const WINE_PATTERN_IMAGE = `${import.meta.env.BASE_URL}images/wine-svgrepo-com.svg`;
 const API_BASE_URL = getApiBaseUrl();
-const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-js/master/examples/image-tracking/assets/card-example/card.mind';
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
@@ -15,15 +12,7 @@ const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
 
-function isApiEnabled() {
-  return Boolean(API_BASE_URL);
-}
-
 async function fetchTargetsManifest() {
-  if (!isApiEnabled()) {
-    return null;
-  }
-
   try {
     const response = await fetch(`${API_BASE_URL}/api/mind/latest?wineId=global&ts=${Date.now()}`, {
       cache: 'no-store',
@@ -431,7 +420,7 @@ export default function App() {
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [adminView, setAdminView] = useState('list');
   const [form, setForm] = useState(createEmptyForm(0));
-  const [mindTargetSrc, setMindTargetSrc] = useState(DEMO_MIND_TARGET_SRC);
+  const [mindTargetSrc, setMindTargetSrc] = useState('');
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
   const [compiledTargetCount, setCompiledTargetCount] = useState(0);
   const [compiledTargetWineMap, setCompiledTargetWineMap] = useState([]);
@@ -496,12 +485,6 @@ export default function App() {
   }, [mode]);
 
   useEffect(() => {
-    if (!isApiEnabled()) {
-      setAdminAuthChecked(true);
-      setAdminAuthenticated(true);
-      return;
-    }
-
     let active = true;
     apiFetch('/api/auth/me')
       .then((payload) => {
@@ -538,7 +521,7 @@ export default function App() {
         return;
       }
       if (path.startsWith('/admin')) {
-        if (isApiEnabled() && !adminAuthenticated) {
+        if (!adminAuthenticated) {
           setMode('admin-login');
           return;
         }
@@ -626,67 +609,25 @@ export default function App() {
 
     async function loadData() {
       try {
-        if (isApiEnabled()) {
-          const [payload, manifestPayload] = await Promise.all([
-            apiFetch('/wines'),
-            fetchTargetsManifest(),
-          ]);
-          const loaded = normalizeWines(payload.wines || []);
-          const hasCompiledTargets = Boolean(manifestPayload?.ready);
-          const targetCount = Number.parseInt(manifestPayload?.targetCount, 10) || 0;
-          const targetWineMap = Array.isArray(manifestPayload?.targetWineMap)
-            ? manifestPayload.targetWineMap
-            : [];
-          if (!active) {
-            return;
-          }
-          setCompiledTargetsReady(hasCompiledTargets);
-          setCompiledTargetCount(targetCount);
-          setCompiledTargetWineMap(targetWineMap);
-          setMindTargetSrc(hasCompiledTargets && manifestPayload?.url ? manifestPayload.url : '');
-          setWines(loaded);
-          if (loaded[0]) {
-            setSelectedWineId(loaded[0].id);
-            setForm(getFormFromWine(loaded[0]));
-          } else {
-            setForm(createEmptyForm(0));
-          }
-          return;
-        }
-
-        setCompiledTargetsReady(false);
-        setCompiledTargetCount(0);
-        setCompiledTargetWineMap([]);
-        setMindTargetSrc(DEMO_MIND_TARGET_SRC);
-        const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (localData) {
-          const parsed = JSON.parse(localData);
-          const restored = normalizeWines(parsed.wines);
-          if (!active) {
-            return;
-          }
-          setWines(restored);
-          if (restored[0]) {
-            setSelectedWineId(restored[0].id);
-            setForm(getFormFromWine(restored[0]));
-          } else {
-            setForm(createEmptyForm(0));
-          }
-          return;
-        }
-
-        const response = await fetch(CONTENT_PATH);
-        if (!response.ok) {
-          throw new Error(`Не удалось загрузить ${CONTENT_PATH}`);
-        }
-
-        const payload = await response.json();
-        const loaded = normalizeWines(payload.wines);
+        const [payload, manifestPayload] = await Promise.all([
+          apiFetch('/wines'),
+          fetchTargetsManifest(),
+        ]);
+        const loaded = normalizeWines(payload.wines || []);
+        const hasCompiledTargets = Boolean(manifestPayload?.ready);
+        const targetCount = Number.parseInt(manifestPayload?.targetCount, 10) || 0;
+        const targetWineMap = Array.isArray(manifestPayload?.targetWineMap)
+          ? manifestPayload.targetWineMap
+          : [];
 
         if (!active) {
           return;
         }
 
+        setCompiledTargetsReady(hasCompiledTargets);
+        setCompiledTargetCount(targetCount);
+        setCompiledTargetWineMap(targetWineMap);
+        setMindTargetSrc(hasCompiledTargets && manifestPayload?.url ? manifestPayload.url : '');
         setWines(loaded);
         if (loaded[0]) {
           setSelectedWineId(loaded[0].id);
@@ -717,7 +658,7 @@ export default function App() {
     root.innerHTML = '';
 
     const wineIndexes = [...new Set(wines.map((wine) => wine.targetIndex))].sort((a, b) => a - b);
-    const manifestIndexes = isApiEnabled() && compiledTargetsReady && compiledTargetCount > 0
+    const manifestIndexes = compiledTargetsReady && compiledTargetCount > 0
       ? Array.from({ length: compiledTargetCount }, (_, index) => index)
       : [];
     const indexes = [...new Set([...wineIndexes, ...manifestIndexes])].sort((a, b) => a - b);
@@ -932,20 +873,18 @@ export default function App() {
       setStartError('');
       setNotice({ text: '', type: '' });
 
-      if (isApiEnabled()) {
-        const manifest = await fetchTargetsManifest();
-        const hasCompiledTargets = Boolean(manifest?.ready);
-        const targetCount = Number.parseInt(manifest?.targetCount, 10) || 0;
-        const targetWineMap = Array.isArray(manifest?.targetWineMap) ? manifest.targetWineMap : [];
-        setCompiledTargetsReady(hasCompiledTargets);
-        setCompiledTargetCount(targetCount);
-        setCompiledTargetWineMap(targetWineMap);
-        if (!hasCompiledTargets) {
-          setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
-          return;
-        }
-        setMindTargetSrc(manifest?.url || DEMO_MIND_TARGET_SRC);
+      const manifest = await fetchTargetsManifest();
+      const hasCompiledTargets = Boolean(manifest?.ready);
+      const targetCount = Number.parseInt(manifest?.targetCount, 10) || 0;
+      const targetWineMap = Array.isArray(manifest?.targetWineMap) ? manifest.targetWineMap : [];
+      setCompiledTargetsReady(hasCompiledTargets);
+      setCompiledTargetCount(targetCount);
+      setCompiledTargetWineMap(targetWineMap);
+      if (!hasCompiledTargets) {
+        setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
+        return;
       }
+      setMindTargetSrc(manifest?.url || '');
 
       setArBooted(true);
       setMode('scan');
@@ -958,13 +897,11 @@ export default function App() {
       await new Promise((resolve) => window.setTimeout(resolve, 80));
       await startAr();
 
-      if (isApiEnabled()) {
-        fallbackTimerRef.current = window.setTimeout(() => {
-          if (!scanHandledRef.current && modeRef.current === 'scan') {
-            runFallbackRecognition();
-          }
-        }, MINDAR_TIMEOUT_MS);
-      }
+      fallbackTimerRef.current = window.setTimeout(() => {
+        if (!scanHandledRef.current && modeRef.current === 'scan') {
+          runFallbackRecognition();
+        }
+      }, MINDAR_TIMEOUT_MS);
     } catch (error) {
       setMode('home');
       setStartError(error.message || 'Проверь доступ к камере и попробуй снова.');
@@ -1020,11 +957,6 @@ export default function App() {
   }
 
   async function refreshAdminAuth() {
-    if (!isApiEnabled()) {
-      setAdminAuthenticated(true);
-      setAdminAuthChecked(true);
-      return true;
-    }
     try {
       const payload = await apiFetch('/api/auth/me');
       const ok = Boolean(payload?.authenticated);
@@ -1061,12 +993,10 @@ export default function App() {
   }
 
   async function handleAdminLogout() {
-    if (isApiEnabled()) {
-      try {
-        await apiFetch('/api/auth/logout', { method: 'POST' });
-      } catch {
-        // ignore
-      }
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore
     }
     setAdminAuthenticated(false);
     setAdminAuthChecked(true);
@@ -1076,16 +1006,8 @@ export default function App() {
 
   async function openAdmin() {
     stopAr();
-    if (isApiEnabled()) {
-      const ok = await refreshAdminAuth();
-      if (!ok) {
-        setMode('admin-login');
-        setAdminAuthError('');
-        window.history.pushState({}, '', '/admin/login');
-        return;
-      }
-    }
-    if (isApiEnabled() && adminAuthChecked && !adminAuthenticated) {
+    const ok = await refreshAdminAuth();
+    if (!ok) {
       setMode('admin-login');
       setAdminAuthError('');
       window.history.pushState({}, '', '/admin/login');
@@ -1118,15 +1040,10 @@ export default function App() {
   }
 
   async function persistWines(nextWines) {
-    if (isApiEnabled()) {
-      await apiFetch('/wines', {
-        method: 'PUT',
-        body: JSON.stringify({ wines: nextWines }),
-      });
-      return;
-    }
-
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ wines: nextWines }));
+    await apiFetch('/wines', {
+      method: 'PUT',
+      body: JSON.stringify({ wines: nextWines }),
+    });
   }
 
   function handleSelectWine(wine) {
@@ -1353,54 +1270,7 @@ export default function App() {
     }
   }
 
-  async function pollLabelJob(jobId) {
-    try {
-      const payload = await apiFetch(`/labels/process/${jobId}`);
-      const job = payload.job;
-
-      if (job.status === 'ready') {
-        setLabelProcess({
-          jobId,
-          status: 'ready',
-          targetIndex: job.targetIndex,
-          error: '',
-        });
-        setForm((prev) => ({ ...prev, targetIndex: String(job.targetIndex) }));
-        setNotice({ text: 'Этикетка обработана. Активация скана обычно занимает до 5 минут.', type: 'success' });
-        return;
-      }
-
-      if (job.status === 'error') {
-        setLabelProcess({
-          jobId,
-          status: 'error',
-          targetIndex: null,
-          error: job.error || 'Ошибка обработки этикетки.',
-        });
-        setNotice({ text: job.error || 'Ошибка обработки этикетки.', type: 'error' });
-        return;
-      }
-
-      labelPollTimerRef.current = window.setTimeout(() => {
-        pollLabelJob(jobId);
-      }, 1200);
-    } catch (error) {
-      setLabelProcess({
-        jobId,
-        status: 'error',
-        targetIndex: null,
-        error: error.message || 'Не удалось получить статус обработки.',
-      });
-      setNotice({ text: error.message || 'Не удалось получить статус обработки.', type: 'error' });
-    }
-  }
-
   async function handleProcessLabel() {
-    if (!isApiEnabled()) {
-      setNotice({ text: 'Обработка этикетки доступна только в API-режиме.', type: 'error' });
-      return;
-    }
-
     const assets = normalizeLabelAssets(form.labelAssets);
     const primary = pickPrimaryAsset(assets);
     const roles = new Set(assets.map((asset) => asset.role));
@@ -1579,7 +1449,7 @@ export default function App() {
       throw new Error('Рейтинг должен быть числом от 0 до 5.');
     }
 
-    if (isApiEnabled() && normalizeString(form.labelImage) && labelProcess.status !== 'ready') {
+    if (normalizeString(form.labelImage) && labelProcess.status !== 'ready') {
       throw new Error('Сначала дождись завершения обработки этикетки.');
     }
 
@@ -1691,38 +1561,6 @@ export default function App() {
     setNotice({ text: 'JSON выгружен.', type: 'success' });
   }
 
-  async function handleResetDemo() {
-    const approved = window.confirm('Сбросить локальные изменения и вернуть demo-данные?');
-    if (!approved) {
-      return;
-    }
-
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      const response = await fetch(CONTENT_PATH);
-      if (!response.ok) {
-        throw new Error('Не удалось загрузить demo-данные.');
-      }
-
-      const payload = await response.json();
-      const restored = normalizeWines(payload.wines);
-      await persistWines(restored);
-      setWines(restored);
-
-      if (restored[0]) {
-        setSelectedWineId(restored[0].id);
-        setForm(getFormFromWine(restored[0]));
-      } else {
-        setSelectedWineId(null);
-        setForm(createEmptyForm(0));
-      }
-
-      setNotice({ text: 'Данные сброшены к demo-версии.', type: 'success' });
-    } catch (error) {
-      setNotice({ text: error.message || 'Сброс не выполнен.', type: 'error' });
-    }
-  }
-
   return (
     <>
       {arBooted && (
@@ -1768,7 +1606,7 @@ export default function App() {
                 <p className="lead">
                   Запусти камеру, наведи на этикетку и покажи карточку с контентом.
                 </p>
-                {isApiEnabled() && !compiledTargetsReady && (
+                {!compiledTargetsReady && (
                   <p className="field-note">
                     Новые этикетки появятся в сканере после фоновой компиляции target-файла (обычно до 5 минут).
                   </p>
@@ -1913,11 +1751,9 @@ export default function App() {
                 </p>
               </div>
               <div className="actions-row">
-                {isApiEnabled() && (
-                  <button className="ghost-btn" type="button" onClick={handleAdminLogout}>
-                    Выйти
-                  </button>
-                )}
+                <button className="ghost-btn" type="button" onClick={handleAdminLogout}>
+                  Выйти
+                </button>
                 <button className="ghost-btn" onClick={closeAdmin}>
                   К сканеру
                 </button>
@@ -1931,9 +1767,6 @@ export default function App() {
                   </button>
                   <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
                     Скачать JSON
-                  </button>
-                  <button className="ghost-btn" type="button" onClick={handleResetDemo}>
-                    Сбросить к demo
                   </button>
                 </div>
 

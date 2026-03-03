@@ -1,11 +1,9 @@
-const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
-const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, '');
-
 function buildUrl(path) {
-  if (!API_BASE_URL) {
-    return path;
+  const normalizedPath = String(path || '').startsWith('/') ? String(path) : `/${String(path || '')}`;
+  if (normalizedPath.startsWith('/api/')) {
+    return normalizedPath;
   }
-  return `${API_BASE_URL}${path}`;
+  return `/api${normalizedPath}`;
 }
 
 export async function apiFetch(path, options = {}) {
@@ -29,5 +27,5 @@ export async function apiFetch(path, options = {}) {
 }
 
 export function getApiBaseUrl() {
-  return API_BASE_URL;
+  return '';
 }
