@@ -8,6 +8,7 @@ const DEMO_MIND_TARGET_SRC = 'https://raw.githubusercontent.com/hiukim/mind-ar-j
 const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
+const MINDAR_TIMEOUT_MS = 3200;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 
@@ -76,10 +77,18 @@ function normalizeWine(wine, fallbackIndex) {
       : fallbackIndex,
     title: normalizeString(wine?.title),
     subtitle: normalizeString(wine?.subtitle),
+    producer: normalizeString(wine?.producer),
+    region: normalizeString(wine?.region),
+    year: normalizeString(wine?.year),
+    grapes: normalizeString(wine?.grapes),
+    description: normalizeString(wine?.description),
     story: normalizeString(wine?.story),
     serving: normalizeString(wine?.serving),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, rating)) : 0,
     labelImage: normalizeString(wine?.labelImage),
+    visualEmbedding: Array.isArray(wine?.visualEmbedding)
+      ? wine.visualEmbedding.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value))
+      : [],
     pairings: normalizeArray(wine?.pairings),
     gallery: normalizeArray(wine?.gallery),
   };
@@ -175,18 +184,126 @@ async function optimizeLabelImage(file) {
   };
 }
 
+function computeVisualEmbeddingFromImageData(imageData) {
+  const { data, width, height } = imageData;
+  const bins = new Array(24).fill(0);
+  const pixelCount = Math.max(1, width * height);
+  const step = 4;
+
+  for (let i = 0; i < data.length; i += step * 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    bins[Math.min(7, Math.floor((r / 255) * 8))] += 1;
+    bins[8 + Math.min(7, Math.floor((g / 255) * 8))] += 1;
+    bins[16 + Math.min(7, Math.floor((b / 255) * 8))] += 1;
+    bins[0] += lum * 0.00001; // tiny luminance tie-breaker for very flat histograms
+  }
+
+  return bins.map((value) => Number((value / pixelCount).toFixed(6)));
+}
+
+async function computeVisualEmbeddingFromDataUrl(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = 96;
+  canvas.height = 96;
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) {
+    return [];
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return computeVisualEmbeddingFromImageData(context.getImageData(0, 0, canvas.width, canvas.height));
+}
+
+function estimateFrameQuality(imageData) {
+  const { data, width, height } = imageData;
+  const gray = new Float32Array(width * height);
+  let highlight = 0;
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    gray[p] = lum;
+    if (lum >= 245) {
+      highlight += 1;
+    }
+  }
+
+  let edgeEnergy = 0;
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const p = y * width + x;
+      const gx = gray[p + 1] - gray[p - 1];
+      const gy = gray[p + width] - gray[p - width];
+      edgeEnergy += Math.sqrt(gx * gx + gy * gy);
+    }
+  }
+
+  const pixelCount = Math.max(1, width * height);
+  const sharpness = edgeEnergy / pixelCount;
+  const highlightRatio = highlight / pixelCount;
+  return {
+    score: sharpness - highlightRatio * 140,
+    sharpness,
+    highlightRatio,
+  };
+}
+
+async function assessLabelQuality(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = Math.max(1, Math.round((image.naturalHeight / image.naturalWidth) * canvas.width));
+  const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+  if (!context) {
+    return { score: 0, status: 'bad', notes: ['Не удалось оценить качество изображения.'] };
+  }
+
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const quality = estimateFrameQuality(context.getImageData(0, 0, canvas.width, canvas.height));
+  const sharpnessNorm = Math.min(1, quality.sharpness / 18);
+  const glarePenalty = Math.min(1, quality.highlightRatio / 0.2);
+  const score = Math.max(0, Math.round((sharpnessNorm * 0.8 + (1 - glarePenalty) * 0.2) * 100));
+  const notes = [];
+
+  if (quality.sharpness < 9) {
+    notes.push('Фото может быть размытым, попробуй сделать снимок четче.');
+  }
+  if (quality.highlightRatio > 0.11) {
+    notes.push('Слишком много бликов/пересвета, измени угол или свет.');
+  }
+  if (!notes.length) {
+    notes.push('Качество этикетки хорошее.');
+  }
+
+  return {
+    score,
+    status: score >= 70 ? 'good' : score >= 45 ? 'medium' : 'bad',
+    notes,
+  };
+}
+
 function getFormFromWine(wine) {
   return {
     id: wine?.id || '',
     targetIndex: wine ? String(wine.targetIndex) : '0',
     title: wine?.title || '',
     subtitle: wine?.subtitle || '',
+    producer: wine?.producer || '',
+    region: wine?.region || '',
+    year: wine?.year || '',
+    grapes: wine?.grapes || '',
+    description: wine?.description || '',
     story: wine?.story || '',
     serving: wine?.serving || '',
     rating: wine ? String(wine.rating ?? 0) : '0',
     labelImage: wine?.labelImage || '',
     pairings: wine?.pairings?.join('\n') || '',
     gallery: wine?.gallery?.join('\n') || '',
+    visualEmbedding: Array.isArray(wine?.visualEmbedding) ? wine.visualEmbedding : [],
+    qualityScore: Number.parseInt(wine?.qualityScore, 10) || 0,
+    qualityStatus: wine?.qualityStatus || 'unknown',
+    qualityNotes: Array.isArray(wine?.qualityNotes) ? wine.qualityNotes : [],
   };
 }
 
@@ -196,12 +313,21 @@ function createEmptyForm(nextIndex = 0) {
     targetIndex: String(nextIndex),
     title: '',
     subtitle: '',
+    producer: '',
+    region: '',
+    year: '',
+    grapes: '',
+    description: '',
     story: '',
     serving: '',
     rating: '0',
     labelImage: '',
     pairings: '',
     gallery: '',
+    visualEmbedding: [],
+    qualityScore: 0,
+    qualityStatus: 'unknown',
+    qualityNotes: [],
   };
 }
 
@@ -213,6 +339,7 @@ export default function App() {
   const modeRef = useRef('home');
   const feedbackTimersRef = useRef([]);
   const labelPollTimerRef = useRef(null);
+  const fallbackTimerRef = useRef(null);
 
   const [mode, setMode] = useState('home');
   const [wines, setWines] = useState([]);
@@ -224,6 +351,8 @@ export default function App() {
   const [compiledTargetCount, setCompiledTargetCount] = useState(0);
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
+  const [recognitionPhase, setRecognitionPhase] = useState('TRY_MINDAR');
+  const [recognitionHint, setRecognitionHint] = useState('');
   const [labelProcess, setLabelProcess] = useState({
     jobId: null,
     status: 'idle',
@@ -447,6 +576,9 @@ export default function App() {
       if (labelPollTimerRef.current) {
         window.clearTimeout(labelPollTimerRef.current);
       }
+      if (fallbackTimerRef.current) {
+        window.clearTimeout(fallbackTimerRef.current);
+      }
       stopAr();
     };
   }, []);
@@ -456,6 +588,10 @@ export default function App() {
       window.clearTimeout(timerId);
     });
     feedbackTimersRef.current = [];
+    if (fallbackTimerRef.current) {
+      window.clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
   }
 
   function applyCameraStyles() {
@@ -525,6 +661,98 @@ export default function App() {
     document.body.classList.remove('is-scanning');
   }
 
+  async function captureBestFrameFromVideo() {
+    const video = document.querySelector('video.mindar-video');
+    if (!(video instanceof HTMLVideoElement) || video.videoWidth < 32 || video.videoHeight < 32) {
+      throw new Error('Камера еще не готова, попробуй снова.');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 224;
+    canvas.height = 224;
+    const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+    if (!context) {
+      throw new Error('Не удалось обработать кадр камеры.');
+    }
+
+    let best = null;
+    for (let i = 0; i < 4; i += 1) {
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const quality = estimateFrameQuality(imageData);
+      const embedding = computeVisualEmbeddingFromImageData(imageData);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const candidate = { quality, embedding, dataUrl };
+      if (!best || candidate.quality.score > best.quality.score) {
+        best = candidate;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 110));
+    }
+
+    if (!best) {
+      throw new Error('Не удалось получить кадр для распознавания.');
+    }
+    return best;
+  }
+
+  async function runFallbackRecognition() {
+    try {
+      setRecognitionPhase('FALLBACK_OCR');
+      setRecognitionHint('Ищу по тексту...');
+      const frame = await captureBestFrameFromVideo();
+
+      const ocrPayload = await apiRequest('/api/recognize/ocr', {
+        method: 'POST',
+        body: JSON.stringify({
+          image_base64: frame.dataUrl,
+          ocr_text: '',
+          locale_hint: 'ru',
+        }),
+      }).catch(() => ({ best: null }));
+
+      if (ocrPayload?.best?.wine_id) {
+        const wine = wines.find((item) => item.id === ocrPayload.best.wine_id);
+        if (wine) {
+          setContentWine(wine);
+          setMode('content');
+          setRecognitionPhase('MINDAR_LOCKED');
+          setRecognitionHint('');
+          await stopAr();
+          return;
+        }
+      }
+
+      setRecognitionPhase('FALLBACK_VISUAL');
+      setRecognitionHint('Ищу по изображению...');
+
+      const visualPayload = await apiRequest('/api/recognize/visual', {
+        method: 'POST',
+        body: JSON.stringify({
+          image_base64: frame.dataUrl,
+          embedding: frame.embedding,
+        }),
+      }).catch(() => ({ best: null }));
+
+      if (visualPayload?.best?.wine_id) {
+        const wine = wines.find((item) => item.id === visualPayload.best.wine_id);
+        if (wine) {
+          setContentWine(wine);
+          setMode('content');
+          setRecognitionPhase('MINDAR_LOCKED');
+          setRecognitionHint('');
+          await stopAr();
+          return;
+        }
+      }
+
+      setRecognitionPhase('NOT_FOUND');
+      setRecognitionHint('Не нашли этикетку. Убери блики и наведи камеру ближе.');
+    } catch (error) {
+      setRecognitionPhase('NOT_FOUND');
+      setRecognitionHint(error.message || 'Не удалось распознать этикетку.');
+    }
+  }
+
   async function handleStartScan() {
     try {
       setStartError('');
@@ -546,11 +774,21 @@ export default function App() {
 
       setMode('scan');
       setScanFeedbackPhase('idle');
+      setRecognitionPhase('TRY_MINDAR');
+      setRecognitionHint('Наведи камеру на этикетку');
       clearFeedbackTimers();
       scanHandledRef.current = false;
       document.body.classList.add('is-scanning');
       await new Promise((resolve) => window.setTimeout(resolve, 80));
       await startAr();
+
+      if (isApiEnabled()) {
+        fallbackTimerRef.current = window.setTimeout(() => {
+          if (!scanHandledRef.current && modeRef.current === 'scan') {
+            runFallbackRecognition();
+          }
+        }, MINDAR_TIMEOUT_MS);
+      }
     } catch (error) {
       setMode('home');
       setStartError(error.message || 'Проверь доступ к камере и попробуй снова.');
@@ -561,6 +799,8 @@ export default function App() {
     await stopAr();
     setMode('home');
     setScanFeedbackPhase('idle');
+    setRecognitionPhase('TRY_MINDAR');
+    setRecognitionHint('');
     clearFeedbackTimers();
     scanHandledRef.current = false;
   }
@@ -577,6 +817,8 @@ export default function App() {
 
     scanHandledRef.current = true;
     clearFeedbackTimers();
+    setRecognitionPhase('MINDAR_LOCKED');
+    setRecognitionHint('');
     setScanFeedbackPhase('loading');
 
     const burstTimer = window.setTimeout(() => {
@@ -695,7 +937,16 @@ export default function App() {
     }
     try {
       const optimized = await optimizeLabelImage(file);
-      setForm((prev) => ({ ...prev, labelImage: optimized.dataUrl }));
+      const visualEmbedding = await computeVisualEmbeddingFromDataUrl(optimized.dataUrl);
+      const quality = await assessLabelQuality(optimized.dataUrl);
+      setForm((prev) => ({
+        ...prev,
+        labelImage: optimized.dataUrl,
+        visualEmbedding,
+        qualityScore: quality.score,
+        qualityStatus: quality.status,
+        qualityNotes: quality.notes,
+      }));
       setLabelProcess({
         jobId: null,
         status: 'idle',
@@ -704,8 +955,8 @@ export default function App() {
       });
       setNotice({
         text: optimized.reduced
-          ? `Фото оптимизировано: ${formatKb(optimized.sourceBytes)} → ${formatKb(optimized.optimizedBytes)}.`
-          : 'Фото этикетки добавлено.',
+          ? `Фото оптимизировано: ${formatKb(optimized.sourceBytes)} → ${formatKb(optimized.optimizedBytes)}. Качество: ${quality.score}/100.`
+          : `Фото этикетки добавлено. Качество: ${quality.score}/100.`,
         type: 'success',
       });
     } catch (error) {
@@ -714,7 +965,14 @@ export default function App() {
   }
 
   function handleClearLabelImage() {
-    setForm((prev) => ({ ...prev, labelImage: '' }));
+    setForm((prev) => ({
+      ...prev,
+      labelImage: '',
+      visualEmbedding: [],
+      qualityScore: 0,
+      qualityStatus: 'unknown',
+      qualityNotes: [],
+    }));
     setLabelProcess({
       jobId: null,
       status: 'idle',
@@ -775,6 +1033,10 @@ export default function App() {
       setNotice({ text: 'Сначала загрузи фото этикетки.', type: 'error' });
       return;
     }
+    if (form.qualityStatus === 'bad') {
+      setNotice({ text: 'Фото этикетки низкого качества. Пересними без бликов и размытия.', type: 'error' });
+      return;
+    }
 
     try {
       if (labelPollTimerRef.current) {
@@ -825,6 +1087,11 @@ export default function App() {
     const targetIndex = Number.parseInt(form.targetIndex, 10);
     const title = normalizeString(form.title);
     const subtitle = normalizeString(form.subtitle);
+    const producer = normalizeString(form.producer);
+    const region = normalizeString(form.region);
+    const year = normalizeString(form.year);
+    const grapes = normalizeString(form.grapes);
+    const description = normalizeString(form.description);
     const story = normalizeString(form.story);
     const serving = normalizeString(form.serving);
     const rating = Number.parseFloat(form.rating);
@@ -854,10 +1121,21 @@ export default function App() {
       targetIndex,
       title,
       subtitle,
+      producer,
+      region,
+      year,
+      grapes,
+      description,
       story,
       serving,
       rating: Number(rating.toFixed(1)),
       labelImage: normalizeString(form.labelImage),
+      visualEmbedding: Array.isArray(form.visualEmbedding)
+        ? form.visualEmbedding.map((value) => Number.parseFloat(value)).filter((value) => Number.isFinite(value))
+        : [],
+      qualityScore: Number.parseInt(form.qualityScore, 10) || 0,
+      qualityStatus: normalizeString(form.qualityStatus) || 'unknown',
+      qualityNotes: Array.isArray(form.qualityNotes) ? form.qualityNotes.map((item) => String(item || '').trim()).filter(Boolean) : [],
       pairings: parseTags(form.pairings),
       gallery: parseGallery(form.gallery),
     };
@@ -980,7 +1258,6 @@ export default function App() {
   return (
     <>
       <a-scene
-        key={mindTargetSrc}
         ref={sceneRef}
         mindar-image={`imageTargetSrc: ${mindTargetSrc}; autoStart: false; uiScanning: no; uiLoading: no`}
         color-space="sRGB"
@@ -1051,7 +1328,7 @@ export default function App() {
                   Отмена
                 </button>
               </div>
-              <p className="scan-pill">Наведи камеру на этикетку</p>
+              <p className="scan-pill">{recognitionHint || 'Наведи камеру на этикетку'}</p>
               <div className="scanner-frame" aria-hidden="true"></div>
               {scanFeedbackPhase !== 'idle' && (
                 <div className={`scan-feedback is-${scanFeedbackPhase}`}>
@@ -1167,10 +1444,15 @@ export default function App() {
                 <div className="detail-grid">
                   <p><strong>Название:</strong> {selectedWine.title}</p>
                   <p><strong>Регион:</strong> {selectedWine.subtitle}</p>
+                  <p><strong>Производитель:</strong> {selectedWine.producer || '—'}</p>
+                  <p><strong>Апелласьон/регион:</strong> {selectedWine.region || '—'}</p>
+                  <p><strong>Год:</strong> {selectedWine.year || '—'}</p>
+                  <p><strong>Сорта:</strong> {selectedWine.grapes || '—'}</p>
                   <p><strong>Рейтинг:</strong> {selectedWine.rating.toFixed(1)} / 5</p>
                   <p><strong>Target Index:</strong> {selectedWine.targetIndex}</p>
                   <p><strong>ID:</strong> {selectedWine.id}</p>
                   <p><strong>Подача:</strong> {selectedWine.serving}</p>
+                  <p className="detail-wide"><strong>Описание:</strong> {selectedWine.description || '—'}</p>
                   <p className="detail-wide"><strong>История:</strong> {selectedWine.story}</p>
                   {selectedWine.labelImage && (
                     <p className="detail-wide">
@@ -1238,6 +1520,31 @@ export default function App() {
                     <input name="subtitle" value={form.subtitle} onChange={handleFormChange} required />
                   </label>
 
+                  <label className="field">
+                    <span>Производитель</span>
+                    <input name="producer" value={form.producer} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field">
+                    <span>Регион</span>
+                    <input name="region" value={form.region} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field">
+                    <span>Год</span>
+                    <input name="year" value={form.year} onChange={handleFormChange} placeholder="2021" />
+                  </label>
+
+                  <label className="field">
+                    <span>Сорт(а)</span>
+                    <input name="grapes" value={form.grapes} onChange={handleFormChange} />
+                  </label>
+
+                  <label className="field field-wide">
+                    <span>Описание</span>
+                    <textarea name="description" rows="3" value={form.description} onChange={handleFormChange} />
+                  </label>
+
                   <label className="field field-wide">
                     <span>История</span>
                     <textarea name="story" rows="4" value={form.story} onChange={handleFormChange} required />
@@ -1263,6 +1570,26 @@ export default function App() {
                     </div>
                     {form.labelImage && (
                       <img className="label-preview" src={form.labelImage} alt="Этикетка для распознавания" />
+                    )}
+                    {form.qualityStatus !== 'unknown' && (
+                      <p className={`field-note process-note is-${
+                        form.qualityStatus === 'good'
+                          ? 'ready'
+                          : form.qualityStatus === 'medium'
+                            ? 'processing'
+                            : 'error'
+                      }`}>
+                        Quality Gate: {
+                          form.qualityStatus === 'good'
+                            ? `✅ Хорошо (${form.qualityScore}/100)`
+                            : form.qualityStatus === 'medium'
+                              ? `⚠️ Средне (${form.qualityScore}/100)`
+                              : `❌ Плохо (${form.qualityScore}/100)`
+                        }
+                      </p>
+                    )}
+                    {Array.isArray(form.qualityNotes) && form.qualityNotes.length > 0 && (
+                      <p className="field-note">{form.qualityNotes.join(' ')}</p>
                     )}
                     {labelProcess.status !== 'idle' && (
                       <p className={`field-note process-note is-${labelProcess.status}`}>

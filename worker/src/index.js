@@ -26,11 +26,21 @@ function normalizeWine(wine, fallbackIndex = 0) {
     subtitle: String(wine?.subtitle || '').trim(),
     story: String(wine?.story || '').trim(),
     serving: String(wine?.serving || '').trim(),
+    producer: String(wine?.producer || '').trim(),
+    region: String(wine?.region || '').trim(),
+    year: String(wine?.year || '').trim(),
+    grapes: String(wine?.grapes || '').trim(),
+    description: String(wine?.description || '').trim(),
     rating: Number.isFinite(rating) ? Math.min(5, Math.max(0, Number(rating.toFixed(1)))) : 0,
     labelImage: String(wine?.labelImage || '').trim(),
+    visualEmbedding: normalizeEmbedding(wine?.visualEmbedding),
     pairings: Array.isArray(wine?.pairings) ? wine.pairings.map((x) => String(x || '').trim()).filter(Boolean) : [],
     gallery: Array.isArray(wine?.gallery) ? wine.gallery.map((x) => String(x || '').trim()).filter(Boolean) : [],
   };
+}
+
+function normalizeWines(wines) {
+  return (wines || []).map((wine, index) => normalizeWine(wine, index));
 }
 
 function validateWine(wine) {
@@ -46,6 +56,92 @@ function validateWine(wine) {
   if (!Number.isFinite(wine.rating) || wine.rating < 0 || wine.rating > 5) {
     throw new Error('rating must be between 0 and 5.');
   }
+}
+
+function normalizeEmbedding(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => Number.parseFloat(item))
+    .filter((item) => Number.isFinite(item));
+}
+
+function normalizeQueryText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9а-яё\s-]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cosineSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || !a.length || !b.length || a.length !== b.length) {
+    return 0;
+  }
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = Number.parseFloat(a[i]);
+    const y = Number.parseFloat(b[i]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  if (!normA || !normB) {
+    return 0;
+  }
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function scoreWineByText(wine, query) {
+  const q = normalizeQueryText(query);
+  if (!q) {
+    return { score: 0, fieldsMatched: [] };
+  }
+
+  const fields = [
+    ['title', wine.title],
+    ['producer', wine.producer],
+    ['region', wine.region],
+    ['subtitle', wine.subtitle],
+    ['year', wine.year],
+    ['grapes', wine.grapes],
+  ];
+
+  const fieldsMatched = [];
+  let score = 0;
+  for (let i = 0; i < fields.length; i += 1) {
+    const [fieldName, fieldValue] = fields[i];
+    const normalized = normalizeQueryText(fieldValue);
+    if (!normalized) {
+      continue;
+    }
+    if (normalized.includes(q) || q.includes(normalized)) {
+      score += fieldName === 'title' ? 1 : 0.65;
+      fieldsMatched.push(fieldName);
+      continue;
+    }
+
+    const queryTokens = q.split(' ').filter(Boolean);
+    const fieldTokens = new Set(normalized.split(' ').filter(Boolean));
+    const tokenHits = queryTokens.filter((token) => fieldTokens.has(token)).length;
+    if (tokenHits) {
+      score += (tokenHits / Math.max(queryTokens.length, 1)) * (fieldName === 'title' ? 0.85 : 0.5);
+      fieldsMatched.push(fieldName);
+    }
+  }
+
+  return {
+    score: Number(score.toFixed(4)),
+    fieldsMatched: [...new Set(fieldsMatched)],
+  };
 }
 
 async function getWines(env) {
@@ -224,6 +320,87 @@ export default {
 
     if (url.pathname === '/health' && request.method === 'GET') {
       return json({ ok: true });
+    }
+
+    if (url.pathname === '/api/mind/dataset' && request.method === 'GET') {
+      const manifest = await getTargetsManifest(env);
+      return json({
+        ready: Boolean(manifest?.ready),
+        targetCount: Number.parseInt(manifest?.targetCount, 10) || 0,
+        compiledAt: manifest?.compiledAt || null,
+        mindUrl: manifest?.ready ? `${url.origin}/targets/mind` : null,
+      });
+    }
+
+    if (url.pathname === '/api/recognize/ocr' && request.method === 'POST') {
+      try {
+        const payload = await request.json();
+        const queryText = normalizeQueryText(payload?.ocr_text || '');
+        if (!queryText) {
+          return json({ matches: [], best: null });
+        }
+
+        const wines = normalizeWines(await getWines(env));
+        const matches = wines
+          .map((wine) => {
+            const scored = scoreWineByText(wine, queryText);
+            return {
+              wine_id: wine.id,
+              score: scored.score,
+              fields_matched: scored.fieldsMatched,
+            };
+          })
+          .filter((item) => item.score > 0.24)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+
+        const best = matches[0] && matches[0].score >= 0.38
+          ? { wine_id: matches[0].wine_id, score: matches[0].score }
+          : null;
+
+        return json({ matches, best });
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/recognize/visual' && request.method === 'POST') {
+      try {
+        const payload = await request.json();
+        const queryEmbedding = normalizeEmbedding(payload?.embedding);
+        if (!queryEmbedding.length) {
+          return json({ matches: [], best: null });
+        }
+
+        const wines = normalizeWines(await getWines(env));
+        const matches = wines
+          .map((wine) => ({
+            wine_id: wine.id,
+            score_cosine: Number(cosineSimilarity(queryEmbedding, normalizeEmbedding(wine.visualEmbedding)).toFixed(5)),
+          }))
+          .filter((item) => item.score_cosine > 0)
+          .sort((a, b) => b.score_cosine - a.score_cosine)
+          .slice(0, 5);
+
+        const best = matches[0] && matches[0].score_cosine >= 0.28
+          ? { wine_id: matches[0].wine_id, score: matches[0].score_cosine }
+          : null;
+
+        return json({ matches, best });
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    const apiWineMatch = url.pathname.match(/^\/api\/wines\/([^/]+)$/);
+    if (apiWineMatch && request.method === 'GET') {
+      const wineId = decodeURIComponent(apiWineMatch[1]);
+      const wines = normalizeWines(await getWines(env));
+      const wine = wines.find((item) => item.id === wineId) || null;
+      if (!wine) {
+        return json({ error: 'Wine not found.' }, 404);
+      }
+      return json({ wine });
     }
 
     if (url.pathname === '/wines' && request.method === 'GET') {
