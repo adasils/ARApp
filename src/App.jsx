@@ -498,6 +498,8 @@ function createEmptyForm() {
 export default function App() {
   const sceneRef = useRef(null);
   const targetsRootRef = useRef(null);
+  const cropStageRef = useRef(null);
+  const cropInteractionRef = useRef(null);
   const arStartedRef = useRef(false);
   const scanHandledRef = useRef(false);
   const modeRef = useRef('home');
@@ -1312,6 +1314,139 @@ export default function App() {
       return;
     }
     handleRemoveLabelAsset(target.id);
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function startCropInteraction(event, mode) {
+    const stage = cropStageRef.current;
+    if (!stage) {
+      return;
+    }
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = {
+      left: cropEditor.x,
+      right: cropEditor.x + cropEditor.width,
+      top: cropEditor.y,
+      bottom: cropEditor.y + cropEditor.height,
+    };
+    const minSize = 8;
+
+    cropInteractionRef.current = { mode, rect, startX, startY, start, minSize };
+
+    const onMove = (moveEvent) => {
+      const state = cropInteractionRef.current;
+      if (!state) {
+        return;
+      }
+      const dx = ((moveEvent.clientX - state.startX) / state.rect.width) * 100;
+      const dy = ((moveEvent.clientY - state.startY) / state.rect.height) * 100;
+      let left = state.start.left;
+      let right = state.start.right;
+      let top = state.start.top;
+      let bottom = state.start.bottom;
+
+      if (state.mode === 'move') {
+        left += dx;
+        right += dx;
+        top += dy;
+        bottom += dy;
+
+        if (left < 0) {
+          right -= left;
+          left = 0;
+        }
+        if (right > 100) {
+          left -= (right - 100);
+          right = 100;
+        }
+        if (top < 0) {
+          bottom -= top;
+          top = 0;
+        }
+        if (bottom > 100) {
+          top -= (bottom - 100);
+          bottom = 100;
+        }
+      } else {
+        if (state.mode.includes('w')) {
+          left += dx;
+        }
+        if (state.mode.includes('e')) {
+          right += dx;
+        }
+        if (state.mode.includes('n')) {
+          top += dy;
+        }
+        if (state.mode.includes('s')) {
+          bottom += dy;
+        }
+
+        left = clamp(left, 0, 100);
+        right = clamp(right, 0, 100);
+        top = clamp(top, 0, 100);
+        bottom = clamp(bottom, 0, 100);
+
+        if (right - left < state.minSize) {
+          if (state.mode.includes('w') && !state.mode.includes('e')) {
+            left = right - state.minSize;
+          } else {
+            right = left + state.minSize;
+          }
+        }
+        if (bottom - top < state.minSize) {
+          if (state.mode.includes('n') && !state.mode.includes('s')) {
+            top = bottom - state.minSize;
+          } else {
+            bottom = top + state.minSize;
+          }
+        }
+
+        left = clamp(left, 0, 100 - state.minSize);
+        top = clamp(top, 0, 100 - state.minSize);
+        right = clamp(right, state.minSize, 100);
+        bottom = clamp(bottom, state.minSize, 100);
+
+        if (right - left < state.minSize) {
+          if (state.mode.includes('w')) {
+            left = right - state.minSize;
+          } else {
+            right = left + state.minSize;
+          }
+        }
+        if (bottom - top < state.minSize) {
+          if (state.mode.includes('n')) {
+            top = bottom - state.minSize;
+          } else {
+            bottom = top + state.minSize;
+          }
+        }
+      }
+
+      setCropEditor((prev) => ({
+        ...prev,
+        x: Number(clamp(left, 0, 95).toFixed(2)),
+        y: Number(clamp(top, 0, 95).toFixed(2)),
+        width: Number(clamp(right - left, state.minSize, 100).toFixed(2)),
+        height: Number(clamp(bottom - top, state.minSize, 100).toFixed(2)),
+      }));
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      cropInteractionRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   }
 
   function openCropEditor(assetId) {
@@ -2150,7 +2285,16 @@ export default function App() {
 
               {getAssetByRole(labelModal.role)?.dataUrl && (
                 <>
-                  <div className="crop-stage">
+                  <div
+                    className="crop-stage"
+                    ref={cropStageRef}
+                    style={{
+                      '--crop-left': `${cropEditor.x}%`,
+                      '--crop-top': `${cropEditor.y}%`,
+                      '--crop-right': `${cropEditor.x + cropEditor.width}%`,
+                      '--crop-bottom': `${cropEditor.y + cropEditor.height}%`,
+                    }}
+                  >
                     <img
                       className="crop-stage-image"
                       src={getAssetByRole(labelModal.role)?.dataUrl}
@@ -2164,50 +2308,18 @@ export default function App() {
                         width: `${cropEditor.width}%`,
                         height: `${cropEditor.height}%`,
                       }}
+                      onPointerDown={(event) => startCropInteraction(event, 'move')}
                     />
+                    <button className="crop-handle is-nw" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'nw'); }} />
+                    <button className="crop-handle is-ne" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'ne'); }} />
+                    <button className="crop-handle is-sw" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'sw'); }} />
+                    <button className="crop-handle is-se" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'se'); }} />
+                    <button className="crop-handle is-n" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'n'); }} />
+                    <button className="crop-handle is-s" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 's'); }} />
+                    <button className="crop-handle is-w" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'w'); }} />
+                    <button className="crop-handle is-e" type="button" onPointerDown={(event) => { event.stopPropagation(); startCropInteraction(event, 'e'); }} />
                   </div>
-                  <div className="form-grid">
-                    <label className="field field-wide">
-                      <span>X (%)</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="95"
-                        value={cropEditor.x}
-                        onChange={(event) => setCropEditor((prev) => ({ ...prev, x: Number(event.target.value) }))}
-                      />
-                    </label>
-                    <label className="field field-wide">
-                      <span>Y (%)</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="95"
-                        value={cropEditor.y}
-                        onChange={(event) => setCropEditor((prev) => ({ ...prev, y: Number(event.target.value) }))}
-                      />
-                    </label>
-                    <label className="field field-wide">
-                      <span>Width (%)</span>
-                      <input
-                        type="range"
-                        min="5"
-                        max={100 - cropEditor.x}
-                        value={cropEditor.width}
-                        onChange={(event) => setCropEditor((prev) => ({ ...prev, width: Number(event.target.value) }))}
-                      />
-                    </label>
-                    <label className="field field-wide">
-                      <span>Height (%)</span>
-                      <input
-                        type="range"
-                        min="5"
-                        max={100 - cropEditor.y}
-                        value={cropEditor.height}
-                        onChange={(event) => setCropEditor((prev) => ({ ...prev, height: Number(event.target.value) }))}
-                      />
-                    </label>
-                  </div>
+                  <p className="field-note">Тяни рамку за углы/стороны или перемещай её целиком.</p>
                   <div className="actions-row">
                     <button className="primary-btn" type="button" onClick={applyCropToAsset}>
                       Применить crop

@@ -762,7 +762,72 @@ h2 {
   position: absolute;
   border: 2px solid rgba(156, 221, 255, 0.95);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.34);
-  pointer-events: none;
+  cursor: move;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(8, 20, 34, 0.9);
+  background: #9be7ff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  padding: 0;
+}
+
+.crop-handle.is-nw,
+.crop-handle.is-n,
+.crop-handle.is-ne {
+  top: calc(var(--crop-top, 0%) - 7px);
+}
+
+.crop-handle.is-sw,
+.crop-handle.is-s,
+.crop-handle.is-se {
+  top: calc(var(--crop-bottom, 100%) - 7px);
+}
+
+.crop-handle.is-nw,
+.crop-handle.is-w,
+.crop-handle.is-sw {
+  left: calc(var(--crop-left, 0%) - 7px);
+}
+
+.crop-handle.is-ne,
+.crop-handle.is-e,
+.crop-handle.is-se {
+  left: calc(var(--crop-right, 100%) - 7px);
+}
+
+.crop-handle.is-n,
+.crop-handle.is-s {
+  left: calc((var(--crop-left, 0%) + var(--crop-right, 100%)) / 2 - 7px);
+}
+
+.crop-handle.is-w,
+.crop-handle.is-e {
+  top: calc((var(--crop-top, 0%) + var(--crop-bottom, 100%)) / 2 - 7px);
+}
+
+.crop-handle.is-nw,
+.crop-handle.is-se {
+  cursor: nwse-resize;
+}
+
+.crop-handle.is-ne,
+.crop-handle.is-sw {
+  cursor: nesw-resize;
+}
+
+.crop-handle.is-n,
+.crop-handle.is-s {
+  cursor: ns-resize;
+}
+
+.crop-handle.is-w,
+.crop-handle.is-e {
+  cursor: ew-resize;
 }
 
 .label-upload-row input[type='file'] {
