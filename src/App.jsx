@@ -190,14 +190,57 @@ function parseGallery(value) {
     .filter(Boolean);
 }
 
-function getNoteGlyph(note) {
+function getNoteIconType(note) {
   const value = String(note || '').toLowerCase();
-  if (/(oak|wood|cedar)/.test(value)) return '🌳';
-  if (/(tobacco|smoke|earth|graphite)/.test(value)) return '🍂';
-  if (/(cherry|berry|fruit|plum|blackcurrant)/.test(value)) return '🍒';
-  if (/(violet|floral|flower|rose)/.test(value)) return '🌸';
-  if (/(vanilla|cream|butter|sweet)/.test(value)) return '🍦';
-  return '✦';
+  if (/(oak|wood|cedar)/.test(value)) return 'oak';
+  if (/(tobacco|smoke|earth|graphite)/.test(value)) return 'leaf';
+  if (/(cherry|berry|fruit|plum|blackcurrant)/.test(value)) return 'fruit';
+  if (/(violet|floral|flower|rose)/.test(value)) return 'flower';
+  if (/(vanilla|cream|butter|sweet)/.test(value)) return 'vanilla';
+  return 'star';
+}
+
+function NoteSolidIcon({ type }) {
+  if (type === 'oak') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 3C8.7 3 6 5.6 6 8.8C6 10.9 7.1 12.8 8.8 13.9L8 21H16L15.2 13.9C16.9 12.8 18 10.9 18 8.8C18 5.6 15.3 3 12 3Z" />
+      </svg>
+    );
+  }
+  if (type === 'leaf') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M19.5 4.5C12 5 7 8.8 5.2 14.3C4.5 16.4 4.5 18.8 5 21C7.2 20.5 9.6 20.5 11.7 19.8C17.2 18 21 13 21.5 5.5L21.6 4.4L20.5 4.5H19.5Z" />
+      </svg>
+    );
+  }
+  if (type === 'fruit') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M8 11.5C5.8 11.5 4 13.3 4 15.5C4 18.5 6.4 21 9.4 21C12.4 21 14.8 18.5 14.8 15.5C14.8 13.3 13 11.5 10.8 11.5H8ZM15.8 11.5C13.6 11.5 11.8 13.3 11.8 15.5C11.8 18.5 14.2 21 17.2 21C20.2 21 22.6 18.5 22.6 15.5C22.6 13.3 20.8 11.5 18.6 11.5H15.8ZM12 8.8C12.8 6.5 14.8 5 17.5 5H18.5V7H17.5C15.9 7 14.7 7.8 14.1 9.1L12 8.8Z" />
+      </svg>
+    );
+  }
+  if (type === 'flower') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 9.5C13.4 9.5 14.5 10.6 14.5 12C14.5 13.4 13.4 14.5 12 14.5C10.6 14.5 9.5 13.4 9.5 12C9.5 10.6 10.6 9.5 12 9.5ZM12 2C13.8 2 15.2 3.4 15.2 5.2C15.2 6.1 14.8 6.9 14.2 7.5C14.9 7.2 15.7 7 16.5 7C18.7 7 20.5 8.8 20.5 11C20.5 12 20.1 12.9 19.5 13.6C20.4 14.2 21 15.2 21 16.4C21 18.4 19.4 20 17.4 20C16.2 20 15.2 19.4 14.6 18.5C13.9 19.1 13 19.5 12 19.5C11 19.5 10.1 19.1 9.4 18.5C8.8 19.4 7.8 20 6.6 20C4.6 20 3 18.4 3 16.4C3 15.2 3.6 14.2 4.5 13.6C3.9 12.9 3.5 12 3.5 11C3.5 8.8 5.3 7 7.5 7C8.3 7 9.1 7.2 9.8 7.5C9.2 6.9 8.8 6.1 8.8 5.2C8.8 3.4 10.2 2 12 2Z" />
+      </svg>
+    );
+  }
+  if (type === 'vanilla') {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M9.7 3.6C11.2 5.9 12 8.2 12 10.5C12 14 9.8 17.3 5.5 20.4L4.1 18.5C7.9 15.7 9.8 13 9.8 10.5C9.8 8.6 9.1 6.7 7.8 4.7L9.7 3.6ZM16.8 3.4L18.7 4.6C17.4 6.6 16.7 8.5 16.7 10.5C16.7 13 18.6 15.7 22.4 18.5L21 20.4C16.7 17.3 14.5 14 14.5 10.5C14.5 8.2 15.3 5.8 16.8 3.4Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2L14.9 8.1L21.5 9L16.7 13.6L17.8 20.2L12 17L6.2 20.2L7.3 13.6L2.5 9L9.1 8.1L12 2Z" />
+    </svg>
+  );
 }
 
 function extractPrefillFromOcr(rawText, ocrLines = []) {
@@ -2408,7 +2451,9 @@ export default function App() {
                   <div className="detail-notes-grid">
                     {(selectedWine.palateNotes?.length ? selectedWine.palateNotes : selectedWine.pairings).map((item) => (
                       <div key={item} className="note-card">
-                        <span className="note-icon" aria-hidden="true">{getNoteGlyph(item)}</span>
+                        <span className="note-icon" aria-hidden="true">
+                          <NoteSolidIcon type={getNoteIconType(item)} />
+                        </span>
                         <span className="note-label">{item}</span>
                       </div>
                     ))}

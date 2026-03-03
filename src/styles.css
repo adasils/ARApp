@@ -743,10 +743,16 @@ h2 {
   width: 30px;
   height: 30px;
   border-radius: 999px;
-  background: #f8ecee;
+  background: #f4dfe3;
   display: grid;
   place-items: center;
-  font-size: 1rem;
+  color: #5f0f17;
+}
+
+.note-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .note-label {
@@ -1111,10 +1117,11 @@ h2 {
 }
 
 .app-shell.is-admin .panel.admin-panel {
-  background: linear-gradient(180deg, #fcfcfd 0%, #f6f7f9 100%);
-  border: 1px solid #e7e1e1;
-  border-radius: 22px;
-  box-shadow: 0 14px 34px rgba(10, 18, 36, 0.08);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
 }
 
 .app-shell.is-admin .panel.admin-panel::before {
