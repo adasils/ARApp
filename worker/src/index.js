@@ -166,12 +166,13 @@ async function createPresignedUrl(env, { method, key, expiresIn = 600, contentTy
   if (!aws || !base) {
     throw new Error('R2 credentials are not configured.');
   }
-  const url = `${base}/${key}`;
+  const urlObj = new URL(`${base}/${key}`);
+  urlObj.searchParams.set('X-Amz-Expires', String(expiresIn));
   const headers = {};
   if (contentType) {
     headers['Content-Type'] = contentType;
   }
-  const signed = await aws.sign(url, {
+  const signed = await aws.sign(urlObj.toString(), {
     method,
     headers,
     aws: {
@@ -179,10 +180,8 @@ async function createPresignedUrl(env, { method, key, expiresIn = 600, contentTy
       allHeaders: true,
     },
   });
-  const signedUrl = new URL(signed.url);
-  signedUrl.searchParams.set('X-Amz-Expires', String(expiresIn));
   return {
-    url: signedUrl.toString(),
+    url: signed.url,
     requiredHeaders: contentType ? { 'Content-Type': contentType } : {},
   };
 }
