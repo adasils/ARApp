@@ -1298,16 +1298,21 @@ export default function App() {
         error: '',
       });
 
-      let compileWines = normalizeWines(wines);
-      if (selectedWineId && (adminView === 'edit' || adminView === 'create')) {
-        const draftWine = normalizeFormWine();
-        const existingIndex = compileWines.findIndex((item) => item.id === selectedWineId);
-        if (existingIndex === -1) {
-          compileWines = [...compileWines, draftWine];
-        } else {
-          compileWines = compileWines.map((item, index) => (index === existingIndex ? draftWine : item));
-        }
+      const draftWineId = normalizeString(form.id) || selectedWineId;
+      if (!draftWineId) {
+        throw new Error('Укажи ID вина перед обработкой этикетки.');
       }
+
+      const draftWine = {
+        id: draftWineId,
+        labelAssets: assets,
+        labelImage: primary?.dataUrl || '',
+      };
+
+      const compileWines = [
+        ...normalizeWines(wines).filter((wine) => wine.id !== draftWineId),
+        draftWine,
+      ];
 
       const compileItems = compileWines.flatMap((wine) => {
         const assets = normalizeLabelAssets(wine.labelAssets);
