@@ -287,6 +287,27 @@ async function getOfflineCompiler() {
   return OfflineCompilerRef;
 }
 
+function getMindarVideoElement() {
+  const primary = document.querySelector('video.mindar-video');
+  if (primary instanceof HTMLVideoElement) {
+    return primary;
+  }
+  const fallback = document.querySelector('video');
+  return fallback instanceof HTMLVideoElement ? fallback : null;
+}
+
+async function waitForMindarVideoReady(timeoutMs = 3500) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const video = getMindarVideoElement();
+    if (video && video.videoWidth > 32 && video.videoHeight > 32 && video.readyState >= 2) {
+      return video;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+  return null;
+}
+
 function computeVisualEmbeddingFromImageData(imageData) {
   const { data, width, height } = imageData;
   const bins = new Array(24).fill(0);
@@ -815,8 +836,8 @@ export default function App() {
   }
 
   async function captureBestFrameFromVideo() {
-    const video = document.querySelector('video.mindar-video');
-    if (!(video instanceof HTMLVideoElement) || video.videoWidth < 32 || video.videoHeight < 32) {
+    const video = await waitForMindarVideoReady();
+    if (!(video instanceof HTMLVideoElement)) {
       throw new Error('Камера еще не готова, попробуй снова.');
     }
 
@@ -901,8 +922,19 @@ export default function App() {
       setRecognitionPhase('NOT_FOUND');
       setRecognitionHint('Не нашли этикетку. Убери блики и наведи камеру ближе.');
     } catch (error) {
+      const text = String(error?.message || '');
+      if (text.includes('Камера еще не готова')) {
+        setRecognitionPhase('TRY_MINDAR');
+        setRecognitionHint('Подожди секунду, камера настраивается...');
+        fallbackTimerRef.current = window.setTimeout(() => {
+          if (!scanHandledRef.current && modeRef.current === 'scan') {
+            runFallbackRecognition();
+          }
+        }, 1200);
+        return;
+      }
       setRecognitionPhase('NOT_FOUND');
-      setRecognitionHint(error.message || 'Не удалось распознать этикетку.');
+      setRecognitionHint('Не удалось распознать этикетку. Попробуй другой угол без бликов.');
     }
   }
 
