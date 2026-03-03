@@ -14,6 +14,7 @@ const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
 const COMPILE_IMAGE_MAX_SIDE = 1200;
 const COMPILE_IMAGE_QUALITY = 0.82;
 const COMPILE_TIMEOUT_MS = 90000;
+let OfflineCompilerRef = null;
 
 async function fetchTargetsManifest() {
   try {
@@ -272,6 +273,18 @@ async function downscaleForCompile(dataUrl) {
   }
   context.drawImage(image, 0, 0, width, height);
   return canvas.toDataURL('image/jpeg', COMPILE_IMAGE_QUALITY);
+}
+
+async function getOfflineCompiler() {
+  if (OfflineCompilerRef) {
+    return OfflineCompilerRef;
+  }
+  const mod = await import(
+    /* @vite-ignore */
+    'https://esm.sh/mind-ar@1.2.5/src/image-target/offline-compiler.js'
+  );
+  OfflineCompilerRef = mod.OfflineCompiler;
+  return OfflineCompilerRef;
 }
 
 function computeVisualEmbeddingFromImageData(imageData) {
@@ -1364,45 +1377,33 @@ export default function App() {
         compileItems.map((item) => downscaleForCompile(item.dataUrl).catch(() => item.dataUrl))
       );
 
-      const worker = new Worker(new URL('./workers/mindCompiler.worker.js', import.meta.url), {
-        type: 'module',
-      });
-
       const compiledBuffer = await new Promise((resolve, reject) => {
         const timeoutId = window.setTimeout(() => {
-          worker.terminate();
           reject(new Error('Компиляция заняла слишком много времени. Попробуй уменьшить количество фото или их размер.'));
         }, COMPILE_TIMEOUT_MS);
-
-        worker.onmessage = (event) => {
-          const message = event.data || {};
-          if (message.type === 'progress') {
-            setMindBuildStatus({
-              phase: 'compiling',
-              progress: Number.parseInt(message.progress, 10) || 0,
-              text: `Компиляция ${Number.parseInt(message.progress, 10) || 0}%`,
+        (async () => {
+          try {
+            const images = [];
+            for (let i = 0; i < compileImages.length; i += 1) {
+              images.push(await loadImage(compileImages[i]));
+            }
+            const OfflineCompiler = await getOfflineCompiler();
+            const compiler = new OfflineCompiler();
+            await compiler.compileImageTargets(images, (progress) => {
+              setMindBuildStatus({
+                phase: 'compiling',
+                progress: Number.parseInt(progress, 10) || 0,
+                text: `Компиляция ${Number.parseInt(progress, 10) || 0}%`,
+              });
             });
-          }
-          if (message.type === 'done') {
+            const compiled = compiler.exportData();
             window.clearTimeout(timeoutId);
-            resolve(message.buffer);
-            worker.terminate();
-          }
-          if (message.type === 'error') {
+            resolve(compiled?.buffer || compiled);
+          } catch (error) {
             window.clearTimeout(timeoutId);
-            reject(new Error(message.message || 'Не удалось собрать .mind'));
-            worker.terminate();
+            reject(new Error(error?.message || 'Не удалось собрать .mind'));
           }
-        };
-        worker.onerror = (error) => {
-          window.clearTimeout(timeoutId);
-          reject(new Error(error.message || 'Ошибка worker при компиляции'));
-          worker.terminate();
-        };
-        worker.postMessage({
-          type: 'compile',
-          images: compileImages,
-        });
+        })();
       });
 
       const mindArrayBuffer = compiledBuffer instanceof ArrayBuffer ? compiledBuffer : new Uint8Array(compiledBuffer).buffer;
