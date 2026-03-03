@@ -459,6 +459,7 @@ export default function App() {
   const [adminPassword, setAdminPassword] = useState('');
   const [adminAuthError, setAdminAuthError] = useState('');
   const [mindBuildStatus, setMindBuildStatus] = useState({ phase: 'idle', progress: 0, text: '' });
+  const [arBooted, setArBooted] = useState(false);
 
   const sortedWines = useMemo(() => {
     return [...wines].sort((a, b) => {
@@ -486,6 +487,12 @@ export default function App() {
 
   useEffect(() => {
     modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === 'scan' || mode === 'content') {
+      setArBooted(true);
+    }
   }, [mode]);
 
   useEffect(() => {
@@ -940,6 +947,7 @@ export default function App() {
         setMindTargetSrc(manifest?.url || DEMO_MIND_TARGET_SRC);
       }
 
+      setArBooted(true);
       setMode('scan');
       setScanFeedbackPhase('idle');
       setRecognitionPhase('TRY_MINDAR');
@@ -1717,27 +1725,30 @@ export default function App() {
 
   return (
     <>
-      <a-scene
-        ref={sceneRef}
-        mindar-image={`imageTargetSrc: ${mindTargetSrc}; autoStart: false; uiScanning: no; uiLoading: no`}
-        color-space="sRGB"
-        renderer="colorManagement: true, physicallyCorrectLights, alpha: true"
-        vr-mode-ui="enabled: false"
-        device-orientation-permission-ui="enabled: false"
-        className={`ar-scene ${mode === 'scan' ? '' : 'hidden'}`}
-        style={{
-          display: mode === 'scan' ? 'block' : 'none',
-          position: 'fixed',
-          inset: 0,
-          width: '100vw',
-          height: 'var(--app-height)',
-          zIndex: 1,
-          pointerEvents: mode === 'scan' ? 'auto' : 'none',
-        }}
-      >
-        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity ref={targetsRootRef}></a-entity>
-      </a-scene>
+      {arBooted && (
+        <a-scene
+          ref={sceneRef}
+          mindar-image={`imageTargetSrc: ${mindTargetSrc}; autoStart: false; uiScanning: no; uiLoading: no`}
+          color-space="sRGB"
+          renderer="colorManagement: true, physicallyCorrectLights, alpha: true"
+          vr-mode-ui="enabled: false"
+          device-orientation-permission-ui="enabled: false"
+          className={`ar-scene ${mode === 'scan' ? '' : 'hidden'}`}
+          style={{
+            display: 'block',
+            visibility: mode === 'scan' ? 'visible' : 'hidden',
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: 'var(--app-height)',
+            zIndex: 1,
+            pointerEvents: mode === 'scan' ? 'auto' : 'none',
+          }}
+        >
+          <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+          <a-entity ref={targetsRootRef}></a-entity>
+        </a-scene>
+      )}
 
       <main
         className={`app-shell ${mode === 'scan' ? 'is-scan' : ''} ${mode === 'home' ? 'is-home' : ''} ${mode === 'admin' ? 'is-admin' : ''} ${mode === 'content' ? 'is-content' : ''}`}

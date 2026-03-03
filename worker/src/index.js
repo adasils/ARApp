@@ -588,11 +588,38 @@ function getNextTargetIndex(labelIndexMap) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const allowedOrigin = getAllowedOrigin(request, env);
+    const withRequestCorsHeaders = (headers = {}) => {
+      const responseHeaders = {
+        ...headers,
+        'Access-Control-Allow-Origin': allowedOrigin,
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type,x-admin-key',
+        'Vary': 'Origin',
+      };
+      if (allowedOrigin !== '*' && allowedOrigin !== 'null') {
+        responseHeaders['Access-Control-Allow-Credentials'] = 'true';
+      }
+      return responseHeaders;
+    };
+    const json = (data, status = 200) => new Response(JSON.stringify(data), {
+      status,
+      headers: withRequestCorsHeaders({
+        'Content-Type': 'application/json',
+      }),
+    });
+    const jsonWithHeaders = (data, status = 200, extraHeaders = {}) => new Response(JSON.stringify(data), {
+      status,
+      headers: withRequestCorsHeaders({
+        'Content-Type': 'application/json',
+        ...extraHeaders,
+      }),
+    });
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
-        headers: withCorsHeaders(),
+        headers: withRequestCorsHeaders(),
       });
     }
 
