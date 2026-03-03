@@ -721,10 +721,40 @@ h2 {
   line-height: 1.5;
 }
 
-.app-shell.is-admin .detail-notes .chip {
-  color: #62121c;
+.detail-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.note-card {
+  border: 1px solid #e4e9f1;
+  border-radius: 12px;
   background: #fff;
-  border: 1px solid #ebcfd4;
+  min-height: 86px;
+  padding: 10px 8px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+}
+
+.note-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #f8ecee;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+}
+
+.note-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #1f2a43;
+  text-align: center;
 }
 
 .detail-grid strong {
@@ -1134,11 +1164,8 @@ h2 {
   background: #fff;
 }
 
-.admin-bell {
-  padding-inline: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.admin-head-actions {
+  justify-content: flex-end;
 }
 
 .admin-mobile-shell {
@@ -1456,14 +1483,17 @@ h2 {
   color: #178347;
 }
 
-.admin-form.is-step-form .actions-row:last-child {
+.admin-form.is-create-mode.is-step-form .actions-row:last-child {
   position: sticky;
   bottom: 0;
   z-index: 8;
-  padding: 10px;
-  border-radius: 14px;
+  padding: 12px;
+  border-radius: 16px;
   background: rgba(246, 247, 249, 0.94);
   backdrop-filter: blur(6px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .app-shell.is-admin .field span {
@@ -1492,10 +1522,21 @@ h2 {
 }
 
 .app-shell.is-admin .primary-btn {
-  background: linear-gradient(145deg, #ff6b73, #e01022);
+  background: #e01022;
   color: #fff;
-  border-color: #d1202f;
-  box-shadow: 0 8px 20px rgba(205, 31, 49, 0.26);
+  border-color: #ca1524;
+  box-shadow: 0 6px 14px rgba(184, 20, 37, 0.22);
+  border-radius: 12px;
+  min-height: 48px;
+}
+
+.app-shell.is-admin .ghost-btn {
+  background: #fff;
+  color: #1b2740;
+  border: 1px solid #d7deea;
+  box-shadow: none;
+  border-radius: 12px;
+  min-height: 48px;
 }
 
 @media (min-width: 860px) {
@@ -1542,6 +1583,10 @@ h2 {
   .admin-head-actions .ghost-btn {
     padding: 9px 11px;
     font-size: 0.86rem;
+  }
+
+  .admin-head-actions {
+    width: auto;
   }
 }
 

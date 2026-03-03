@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Bell, ChevronRight, LayoutGrid, ScanLine, Search, Settings, Wine } from 'lucide-react';
+import { BarChart3, ChevronRight, LayoutGrid, ScanLine, Search, Settings, Wine } from 'lucide-react';
 import { apiFetch, getApiBaseUrl } from './lib/api.js';
 import { sha256HexFromArrayBuffer } from './lib/hash.js';
 
@@ -188,6 +188,16 @@ function parseGallery(value) {
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function getNoteGlyph(note) {
+  const value = String(note || '').toLowerCase();
+  if (/(oak|wood|cedar)/.test(value)) return '🌳';
+  if (/(tobacco|smoke|earth|graphite)/.test(value)) return '🍂';
+  if (/(cherry|berry|fruit|plum|blackcurrant)/.test(value)) return '🍒';
+  if (/(violet|floral|flower|rose)/.test(value)) return '🌸';
+  if (/(vanilla|cream|butter|sweet)/.test(value)) return '🍦';
+  return '✦';
 }
 
 function extractPrefillFromOcr(rawText, ocrLines = []) {
@@ -2286,14 +2296,8 @@ export default function App() {
                 </div>
               </div>
               <div className="actions-row admin-head-actions">
-                <button className="ghost-btn admin-bell" type="button" aria-label="Уведомления">
-                  <Bell size={18} />
-                </button>
                 <button className="ghost-btn" type="button" onClick={handleAdminLogout}>
                   Выйти
-                </button>
-                <button className="ghost-btn" onClick={closeAdmin}>
-                  К сканеру
                 </button>
               </div>
             </div>
@@ -2362,14 +2366,6 @@ export default function App() {
                   <button type="button" onClick={closeAdmin}><ScanLine size={18} />Scanner</button>
                   <button type="button" onClick={handleDownloadJson}><Settings size={18} />Export</button>
                 </div>
-                <div className="admin-actions-row">
-                  <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
-                    Скачать JSON
-                  </button>
-                  <button className="ghost-btn" type="button" onClick={handleNewWine}>
-                    Добавить новое вино
-                  </button>
-                </div>
               </div>
             )}
 
@@ -2409,11 +2405,12 @@ export default function App() {
 
                 <div className="detail-notes">
                   <h4>Palate Notes & Sensory Profile</h4>
-                  <div className="chips-wrap">
+                  <div className="detail-notes-grid">
                     {(selectedWine.palateNotes?.length ? selectedWine.palateNotes : selectedWine.pairings).map((item) => (
-                      <span key={item} className="chip">
-                        {item}
-                      </span>
+                      <div key={item} className="note-card">
+                        <span className="note-icon" aria-hidden="true">{getNoteGlyph(item)}</span>
+                        <span className="note-label">{item}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -2440,7 +2437,7 @@ export default function App() {
             )}
 
             {(adminView === 'edit' || adminView === 'create') && (
-              <form className={`admin-form ${createStep === 'labels' ? 'is-step-labels' : 'is-step-form'}`} onSubmit={handleSaveWine}>
+              <form className={`admin-form ${adminView === 'create' ? 'is-create-mode' : ''} ${createStep === 'labels' ? 'is-step-labels' : 'is-step-form'}`} onSubmit={handleSaveWine}>
                 {adminView === 'create' && (
                   <div className="wizard-progress-wrap">
                     <div className="wizard-progress-head">
