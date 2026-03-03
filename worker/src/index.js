@@ -741,6 +741,19 @@ export default {
       const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
       const raw = await env.WINES_KV.get(getMindLatestKey(wineId));
       if (!raw) {
+        // Backward compatibility: support legacy KV-only targets until R2 metadata is generated.
+        const legacyManifest = await getTargetsManifest(env);
+        const legacyMind = await env.WINES_KV.get(TARGETS_MIND_KEY);
+        if (legacyManifest?.ready && legacyMind) {
+          return json({
+            url: `${url.origin}/targets/mind?v=${encodeURIComponent(legacyManifest.signature || Date.now())}`,
+            hash: legacyManifest.signature || null,
+            key: TARGETS_MIND_KEY,
+            targetCount: Number.parseInt(legacyManifest.targetCount, 10) || 0,
+            targetWineMap: normalizeTargetWineMap(legacyManifest.targetWineMap),
+            source: 'legacy-kv',
+          });
+        }
         return json({ error: 'Mind dataset not found.' }, 404);
       }
       let latest = null;
