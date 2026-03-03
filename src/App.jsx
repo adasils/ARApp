@@ -11,6 +11,9 @@ const MINDAR_TIMEOUT_MS = 3200;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right', 'closeup', 'alt'];
+const COMPILE_IMAGE_MAX_SIDE = 1200;
+const COMPILE_IMAGE_QUALITY = 0.82;
+const COMPILE_TIMEOUT_MS = 90000;
 
 async function fetchTargetsManifest() {
   try {
@@ -247,6 +250,28 @@ async function optimizeLabelImage(file) {
     optimizedBytes: reduced ? optimizedBytes : sourceBytes,
     reduced,
   };
+}
+
+async function downscaleForCompile(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const maxSide = Math.max(image.naturalWidth, image.naturalHeight);
+  const ratio = maxSide > COMPILE_IMAGE_MAX_SIDE ? COMPILE_IMAGE_MAX_SIDE / maxSide : 1;
+  const width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  const height = Math.max(1, Math.round(image.naturalHeight * ratio));
+
+  if (ratio >= 1 && /^data:image\/jpeg;base64,/i.test(dataUrl)) {
+    return dataUrl;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: false });
+  if (!context) {
+    return dataUrl;
+  }
+  context.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL('image/jpeg', COMPILE_IMAGE_QUALITY);
 }
 
 function computeVisualEmbeddingFromImageData(imageData) {
@@ -1334,11 +1359,21 @@ export default function App() {
         throw new Error('Нет этикеток для компиляции.');
       }
 
+      setMindBuildStatus({ phase: 'preparing', progress: 0, text: 'Оптимизируем фото перед компиляцией...' });
+      const compileImages = await Promise.all(
+        compileItems.map((item) => downscaleForCompile(item.dataUrl).catch(() => item.dataUrl))
+      );
+
       const worker = new Worker(new URL('./workers/mindCompiler.worker.js', import.meta.url), {
         type: 'module',
       });
 
       const compiledBuffer = await new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+          worker.terminate();
+          reject(new Error('Компиляция заняла слишком много времени. Попробуй уменьшить количество фото или их размер.'));
+        }, COMPILE_TIMEOUT_MS);
+
         worker.onmessage = (event) => {
           const message = event.data || {};
           if (message.type === 'progress') {
@@ -1349,21 +1384,24 @@ export default function App() {
             });
           }
           if (message.type === 'done') {
+            window.clearTimeout(timeoutId);
             resolve(message.buffer);
             worker.terminate();
           }
           if (message.type === 'error') {
+            window.clearTimeout(timeoutId);
             reject(new Error(message.message || 'Не удалось собрать .mind'));
             worker.terminate();
           }
         };
         worker.onerror = (error) => {
+          window.clearTimeout(timeoutId);
           reject(new Error(error.message || 'Ошибка worker при компиляции'));
           worker.terminate();
         };
         worker.postMessage({
           type: 'compile',
-          images: compileItems.map((item) => item.dataUrl),
+          images: compileImages,
         });
       });
 
