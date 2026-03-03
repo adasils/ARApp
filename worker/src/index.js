@@ -1,3 +1,5 @@
+import { AwsClient } from 'aws4fetch';
+
 const WINES_KEY = 'wines';
 const LABEL_JOB_PREFIX = 'label-job:';
 const LABEL_RECORD_PREFIX = 'label-record:';
@@ -5,6 +7,9 @@ const LABEL_INDEX_KEY = 'label-index';
 const TARGETS_MIND_KEY = 'targets-mind-v1';
 const TARGETS_MANIFEST_KEY = 'targets-manifest-v1';
 const LABEL_PROCESSING_MS = 3000;
+const SESSION_PREFIX = 'session:';
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+const MIND_LATEST_PREFIX = 'mind:latest:';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -13,6 +18,200 @@ function json(data, status = 200) {
       'Content-Type': 'application/json',
     }),
   });
+}
+
+function jsonWithHeaders(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: withCorsHeaders({
+      'Content-Type': 'application/json',
+      ...extraHeaders,
+    }),
+  });
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getAllowedOrigin(request, env) {
+  const origin = request.headers.get('origin');
+  if (!origin) {
+    return '*';
+  }
+
+  const configured = String(env.ALLOWED_ORIGIN || '').trim();
+  if (!configured) {
+    return origin;
+  }
+
+  const patterns = configured
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => new RegExp(`^${escapeRegExp(item).replace(/\\\*/g, '.*')}$`));
+
+  return patterns.some((pattern) => pattern.test(origin)) ? origin : 'null';
+}
+
+function parseCookies(request) {
+  const header = request.headers.get('cookie') || '';
+  const pairs = header.split(';').map((part) => part.trim()).filter(Boolean);
+  const cookies = {};
+  pairs.forEach((pair) => {
+    const separator = pair.indexOf('=');
+    if (separator === -1) {
+      return;
+    }
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    cookies[key] = value;
+  });
+  return cookies;
+}
+
+function buildSessionCookie(token, maxAgeSeconds = SESSION_TTL_SECONDS) {
+  return `session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${maxAgeSeconds}`;
+}
+
+function clearSessionCookie() {
+  return 'session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0';
+}
+
+function sessionKey(token) {
+  return `${SESSION_PREFIX}${token}`;
+}
+
+async function getSessionFromRequest(request, env) {
+  const token = String(parseCookies(request).session || '').trim();
+  if (!token) {
+    return null;
+  }
+  const raw = await env.WINES_KV.get(sessionKey(token));
+  if (!raw) {
+    return null;
+  }
+  try {
+    const session = JSON.parse(raw);
+    return {
+      token,
+      session,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function requireAdmin(request, env) {
+  const session = await getSessionFromRequest(request, env);
+  if (!session) {
+    return null;
+  }
+  return session;
+}
+
+async function hasAdminAccess(request, env) {
+  const session = await requireAdmin(request, env);
+  if (session) {
+    return true;
+  }
+  return isAdminRequest(request, env);
+}
+
+function toHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function generateSessionToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return toHex(bytes);
+}
+
+async function verifyTurnstile(turnstileToken, request, env) {
+  const secret = String(env.TURNSTILE_SECRET_KEY || '').trim();
+  if (!turnstileToken || !secret) {
+    return !turnstileToken;
+  }
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const body = new URLSearchParams();
+  body.set('secret', secret);
+  body.set('response', turnstileToken);
+  if (ip) {
+    body.set('remoteip', ip);
+  }
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  if (!response.ok) {
+    return false;
+  }
+  const payload = await response.json().catch(() => null);
+  return Boolean(payload?.success);
+}
+
+function getAwsClient(env) {
+  const accessKeyId = String(env.R2_ACCESS_KEY_ID || '').trim();
+  const secretAccessKey = String(env.R2_SECRET_ACCESS_KEY || '').trim();
+  const accountId = String(env.CF_ACCOUNT_ID || '').trim();
+  if (!accessKeyId || !secretAccessKey || !accountId) {
+    return null;
+  }
+  return new AwsClient({
+    accessKeyId,
+    secretAccessKey,
+    service: 's3',
+    region: 'auto',
+  });
+}
+
+function getR2S3Base(env) {
+  const accountId = String(env.CF_ACCOUNT_ID || '').trim();
+  const bucket = String(env.R2_BUCKET || '').trim();
+  if (!accountId || !bucket) {
+    return '';
+  }
+  return `https://${accountId}.r2.cloudflarestorage.com/${bucket}`;
+}
+
+function getR2PublicBase(env) {
+  const base = String(env.R2_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+  return base;
+}
+
+async function createPresignedUrl(env, { method, key, expiresIn = 600, contentType = '' }) {
+  const aws = getAwsClient(env);
+  const base = getR2S3Base(env);
+  if (!aws || !base) {
+    throw new Error('R2 credentials are not configured.');
+  }
+  const url = `${base}/${key}`;
+  const headers = {};
+  if (contentType) {
+    headers['Content-Type'] = contentType;
+  }
+  const signed = await aws.sign(url, {
+    method,
+    headers,
+    aws: {
+      signQuery: true,
+      allHeaders: true,
+    },
+  });
+  const signedUrl = new URL(signed.url);
+  signedUrl.searchParams.set('X-Amz-Expires', String(expiresIn));
+  return {
+    url: signedUrl.toString(),
+    requiredHeaders: contentType ? { 'Content-Type': contentType } : {},
+  };
+}
+
+function getMindLatestKey(wineId) {
+  return `${MIND_LATEST_PREFIX}${wineId}`;
 }
 
 function normalizeWine(wine, fallbackIndex = 0) {
@@ -289,6 +488,7 @@ function withCorsHeaders(headers = {}) {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,x-admin-key',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -400,6 +600,163 @@ export default {
       return json({ ok: true });
     }
 
+    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      try {
+        const payload = await request.json();
+        const password = String(payload?.password || '');
+        const isValidPassword = password && password === String(env.ADMIN_PASSWORD || '');
+        if (!isValidPassword) {
+          return json({ ok: false, error: 'Invalid credentials.' }, 401);
+        }
+
+        const turnstileToken = String(payload?.turnstileToken || '').trim();
+        const turnstileOk = await verifyTurnstile(turnstileToken, request, env);
+        if (!turnstileOk) {
+          return json({ ok: false, error: 'Turnstile verification failed.' }, 400);
+        }
+
+        const token = await generateSessionToken();
+        const session = {
+          user: 'admin',
+          createdAt: Date.now(),
+        };
+        await env.WINES_KV.put(sessionKey(token), JSON.stringify(session), {
+          expirationTtl: SESSION_TTL_SECONDS,
+        });
+
+        return jsonWithHeaders(
+          { ok: true },
+          200,
+          { 'Set-Cookie': buildSessionCookie(token) }
+        );
+      } catch (error) {
+        return json({ ok: false, error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/auth/logout' && request.method === 'POST') {
+      const session = await getSessionFromRequest(request, env);
+      if (session?.token) {
+        await env.WINES_KV.delete(sessionKey(session.token));
+      }
+      return jsonWithHeaders({ ok: true }, 200, {
+        'Set-Cookie': clearSessionCookie(),
+      });
+    }
+
+    if (url.pathname === '/api/auth/me' && request.method === 'GET') {
+      const session = await getSessionFromRequest(request, env);
+      return json({
+        authenticated: Boolean(session),
+        user: session?.session?.user || null,
+      });
+    }
+
+    if (url.pathname === '/api/admin/mind/presign-put' && request.method === 'POST') {
+      const session = await requireAdmin(request, env);
+      if (!session) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
+
+      try {
+        const payload = await request.json();
+        const wineId = String(payload?.wineId || 'global').trim() || 'global';
+        const hash = String(payload?.hash || '').trim();
+        const targetCount = Number.parseInt(payload?.targetCount, 10) || 0;
+        const targetWineMap = normalizeTargetWineMap(payload?.targetWineMap);
+        if (!hash) {
+          return json({ error: 'hash is required.' }, 400);
+        }
+
+        const key = `mind/${wineId}/${hash}.mind`;
+        const presigned = await createPresignedUrl(env, {
+          method: 'PUT',
+          key,
+          expiresIn: 600,
+          contentType: 'application/octet-stream',
+        });
+
+        await env.WINES_KV.put(
+          getMindLatestKey(wineId),
+          JSON.stringify({
+            key,
+            hash,
+            targetCount,
+            targetWineMap,
+            updatedAt: Date.now(),
+          })
+        );
+
+        if (wineId === 'global') {
+          await env.WINES_KV.put(
+            getMindLatestKey('global'),
+            JSON.stringify({
+              key,
+              hash,
+              targetCount,
+              targetWineMap,
+              updatedAt: Date.now(),
+            })
+          );
+        }
+
+        return json({
+          putUrl: presigned.url,
+          key,
+          requiredHeaders: presigned.requiredHeaders,
+        });
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/mind/latest' && request.method === 'GET') {
+      const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
+      const raw = await env.WINES_KV.get(getMindLatestKey(wineId));
+      if (!raw) {
+        return json({ error: 'Mind dataset not found.' }, 404);
+      }
+      let latest = null;
+      try {
+        latest = JSON.parse(raw);
+      } catch {
+        return json({ error: 'Mind metadata corrupted.' }, 500);
+      }
+
+      const key = String(latest?.key || '').trim();
+      const hash = String(latest?.hash || '').trim();
+      const targetCount = Number.parseInt(latest?.targetCount, 10) || 0;
+      const targetWineMap = normalizeTargetWineMap(latest?.targetWineMap);
+      if (!key) {
+        return json({ error: 'Mind metadata invalid.' }, 500);
+      }
+
+      const publicBase = getR2PublicBase(env);
+      if (publicBase) {
+        return json({
+          url: `${publicBase}/${key}?v=${encodeURIComponent(hash || Date.now())}`,
+          hash: hash || null,
+          key,
+          targetCount,
+          targetWineMap,
+        });
+      }
+
+      const presigned = await createPresignedUrl(env, {
+        method: 'GET',
+        key,
+        expiresIn: 1800,
+      });
+      const suffix = hash ? `${presigned.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(hash)}` : '';
+      return json({
+        url: `${presigned.url}${suffix}`,
+        hash: hash || null,
+        key,
+        targetCount,
+        targetWineMap,
+      });
+    }
+
     if (url.pathname === '/api/mind/dataset' && request.method === 'GET') {
       const manifest = await getTargetsManifest(env);
       return json({
@@ -490,6 +847,10 @@ export default {
     }
 
     if (url.pathname === '/wines' && request.method === 'PUT') {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
       try {
         const payload = await request.json();
         if (!Array.isArray(payload?.wines)) {
@@ -506,7 +867,8 @@ export default {
     }
 
     if (url.pathname === '/labels/records' && request.method === 'GET') {
-      if (!isAdminRequest(request, env)) {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
         return json({ error: 'Unauthorized.' }, 401);
       }
 
@@ -535,6 +897,10 @@ export default {
     }
 
     if (url.pathname === '/labels/process' && request.method === 'POST') {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
       try {
         const payload = await request.json();
         const { dataUrl, mime, base64 } = normalizeDataUrl(payload?.labelImage);
@@ -650,7 +1016,8 @@ export default {
     }
 
     if (url.pathname === '/targets/mind' && request.method === 'PUT') {
-      if (!isAdminRequest(request, env)) {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
         return json({ error: 'Unauthorized.' }, 401);
       }
 
@@ -697,6 +1064,10 @@ export default {
       }
 
       if (request.method === 'DELETE') {
+        const allowed = await hasAdminAccess(request, env);
+        if (!allowed) {
+          return json({ error: 'Unauthorized.' }, 401);
+        }
         if (wineIndex === -1) {
           return json({ error: 'Wine not found.' }, 404);
         }
@@ -706,6 +1077,10 @@ export default {
       }
 
       if (request.method === 'PUT') {
+        const allowed = await hasAdminAccess(request, env);
+        if (!allowed) {
+          return json({ error: 'Unauthorized.' }, 401);
+        }
         if (wineIndex === -1) {
           return json({ error: 'Wine not found.' }, 404);
         }
@@ -733,6 +1108,10 @@ export default {
     }
 
     if (url.pathname === '/wines' && request.method === 'POST') {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
       try {
         const payload = await request.json();
         const wines = await getWines(env);
