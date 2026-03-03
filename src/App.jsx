@@ -621,6 +621,8 @@ export default function App() {
   const [selectedWineId, setSelectedWineId] = useState(null);
   const [adminView, setAdminView] = useState('list');
   const [createStep, setCreateStep] = useState('labels');
+  const [adminSearch, setAdminSearch] = useState('');
+  const [adminListTab, setAdminListTab] = useState('published');
   const [form, setForm] = useState(createEmptyForm());
   const [mindTargetSrc, setMindTargetSrc] = useState('');
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
@@ -665,6 +667,29 @@ export default function App() {
   const selectedWine = useMemo(() => {
     return wines.find((wine) => wine.id === selectedWineId) || null;
   }, [wines, selectedWineId]);
+
+  const visibleAdminWines = useMemo(() => {
+    const query = normalizeString(adminSearch).toLowerCase();
+    return sortedWines.filter((wine) => {
+      const status = wine.status === 'draft' ? 'draft' : (wine.status || 'published');
+      if (adminListTab !== 'all' && status !== adminListTab) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        wine.title,
+        wine.producer,
+        wine.region,
+        wine.year,
+        wine.grapes,
+      ]
+        .map((x) => String(x || '').toLowerCase())
+        .join(' ');
+      return haystack.includes(query);
+    });
+  }, [sortedWines, adminSearch, adminListTab]);
 
   const selectedCropAsset = useMemo(() => {
     return normalizeLabelAssets(form.labelAssets).find((asset) => asset.id === cropEditor.assetId) || null;
@@ -2205,19 +2230,19 @@ export default function App() {
         {mode === 'admin' && (
           <section className="panel admin-panel">
             <div className="admin-header">
-              <div>
-                <p className="eyebrow">Content Manager</p>
+              <div className="admin-title-wrap">
+                <div className="admin-title-icon">🍷</div>
+                <div>
+                <p className="eyebrow">Vinoria Admin</p>
                 <h2>
-                  {adminView === 'list' && 'Список вин'}
+                  {adminView === 'list' && 'Wine Catalog'}
                   {adminView === 'detail' && 'Карточка вина'}
                   {adminView === 'edit' && 'Редактирование вина'}
-                  {adminView === 'create' && (createStep === 'labels' ? 'Новое вино: шаг 1/2 (этикетки)' : 'Новое вино: шаг 2/2 (карточка)')}
+                  {adminView === 'create' && (createStep === 'labels' ? 'Add New Wine - Step 1' : 'Add New Wine - Step 2')}
                 </h2>
-                <p className="lead">
-                  Управляй карточками вин, рейтингами и контентом для AR.
-                </p>
+                </div>
               </div>
-              <div className="actions-row">
+              <div className="actions-row admin-head-actions">
                 <button className="ghost-btn" type="button" onClick={handleAdminLogout}>
                   Выйти
                 </button>
@@ -2227,27 +2252,75 @@ export default function App() {
               </div>
             </div>
             {adminView === 'list' && (
-              <div className="admin-overview">
-                <div className="admin-actions-row">
-                  <button className="primary-btn" onClick={handleNewWine}>
-                    Добавить новое вино
+              <div className="admin-overview admin-mobile-shell">
+                <div className="admin-search-box">
+                  <input
+                    type="search"
+                    placeholder="Search wine labels, vintages..."
+                    value={adminSearch}
+                    onChange={(event) => setAdminSearch(event.target.value)}
+                  />
+                </div>
+                <div className="admin-tabs">
+                  <button
+                    type="button"
+                    className={`admin-tab ${adminListTab === 'published' ? 'is-active' : ''}`}
+                    onClick={() => setAdminListTab('published')}
+                  >
+                    Published
                   </button>
-                  <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
-                    Скачать JSON
+                  <button
+                    type="button"
+                    className={`admin-tab ${adminListTab === 'draft' ? 'is-active' : ''}`}
+                    onClick={() => setAdminListTab('draft')}
+                  >
+                    Drafts
+                  </button>
+                  <button
+                    type="button"
+                    className={`admin-tab ${adminListTab === 'all' ? 'is-active' : ''}`}
+                    onClick={() => setAdminListTab('all')}
+                  >
+                    All
                   </button>
                 </div>
 
-                <div className="wine-grid">
-                  {!sortedWines.length && <div className="empty-item">Пока нет вин. Добавь первое.</div>}
-                  {sortedWines.map((wine) => (
-                    <button key={wine.id} className="wine-card" onClick={() => handleSelectWine(wine)}>
-                      <div className="wine-item-title">{wine.title || wine.id}</div>
-                      <div className="wine-item-subtitle">{wine.region || wine.producer || 'Без региона'}</div>
-                      <div className="wine-item-meta">
-                        {wine.status === 'draft' ? 'Черновик' : 'Опубликовано'} · Рейтинг: {wine.rating.toFixed(1)} / 5
-                      </div>
-                    </button>
-                  ))}
+                <div className="catalog-list">
+                  {!visibleAdminWines.length && <div className="empty-item">Ничего не найдено.</div>}
+                  {visibleAdminWines.map((wine) => {
+                    const front = normalizeLabelAssets(wine.labelAssets).find((asset) => asset.role === 'front');
+                    return (
+                      <button key={wine.id} className="catalog-row" onClick={() => handleSelectWine(wine)}>
+                        <div className="catalog-thumb">
+                          {front?.dataUrl ? <img src={front.dataUrl} alt={wine.title || wine.id} /> : <span>∅</span>}
+                        </div>
+                        <div className="catalog-main">
+                          <div className="wine-item-title">{[wine.title || wine.id, wine.year || ''].filter(Boolean).join(' ')}</div>
+                          <div className="wine-item-subtitle">{wine.region || wine.producer || 'Без региона'}</div>
+                        </div>
+                        <div className={`catalog-badge ${wine.status === 'draft' ? 'is-draft' : 'is-published'}`}>
+                          {wine.status === 'draft' ? 'DRAFT' : 'PUBLISHED'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button className="admin-fab" type="button" onClick={handleNewWine} aria-label="Add new wine">
+                  +
+                </button>
+                <div className="admin-bottom-nav">
+                  <button type="button" className="is-active">Catalog</button>
+                  <button type="button">Analytics</button>
+                  <button type="button" onClick={closeAdmin}>Scanner</button>
+                  <button type="button" onClick={handleDownloadJson}>Export</button>
+                </div>
+                <div className="admin-actions-row">
+                  <button className="ghost-btn" type="button" onClick={handleDownloadJson}>
+                    Скачать JSON
+                  </button>
+                  <button className="ghost-btn" type="button" onClick={handleNewWine}>
+                    Добавить новое вино
+                  </button>
                 </div>
               </div>
             )}
@@ -2288,16 +2361,27 @@ export default function App() {
             )}
 
             {(adminView === 'edit' || adminView === 'create') && (
-              <form className="admin-form" onSubmit={handleSaveWine}>
+              <form className={`admin-form ${createStep === 'labels' ? 'is-step-labels' : 'is-step-form'}`} onSubmit={handleSaveWine}>
+                {adminView === 'create' && (
+                  <div className="wizard-progress-wrap">
+                    <div className="wizard-progress-head">
+                      <span>Overall Progress</span>
+                      <span>Step {createStep === 'labels' ? '1' : '2'} of 2</span>
+                    </div>
+                    <div className="wizard-progress-track">
+                      <div className="wizard-progress-fill" style={{ width: createStep === 'labels' ? '50%' : '100%' }} />
+                    </div>
+                  </div>
+                )}
                 <div className="form-grid">
                   {(adminView !== 'create' || createStep === 'form') && (
                     <>
                   <p className="field-note field-wide">
-                    ID и target index назначаются автоматически при сохранении.
+                    Final Details & Characteristics
                   </p>
 
                   <label className="field">
-                    <span>Рейтинг (0-5)</span>
+                    <span>Points / Rating</span>
                     <input
                       name="rating"
                       type="number"
@@ -2311,42 +2395,42 @@ export default function App() {
                   </label>
 
                   <label className="field field-wide">
-                    <span>Наименование</span>
+                    <span>Wine Name</span>
                     <input name="title" value={form.title} onChange={handleFormChange} required />
                   </label>
 
                   <label className="field">
-                    <span>Производитель</span>
+                    <span>Producer</span>
                     <input name="producer" value={form.producer} onChange={handleFormChange} />
                   </label>
 
                   <label className="field">
-                    <span>Регион</span>
+                    <span>Region</span>
                     <input name="region" value={form.region} onChange={handleFormChange} />
                   </label>
 
                   <label className="field">
-                    <span>Год</span>
+                    <span>Vintage</span>
                     <input name="year" value={form.year} onChange={handleFormChange} placeholder="2021" />
                   </label>
 
                   <label className="field">
-                    <span>Сорт(а)</span>
+                    <span>Grapes</span>
                     <input name="grapes" value={form.grapes} onChange={handleFormChange} />
                   </label>
 
                   <label className="field field-wide">
-                    <span>Описание</span>
+                    <span>Description</span>
                     <textarea name="description" rows="3" value={form.description} onChange={handleFormChange} />
                   </label>
 
                   <label className="field field-wide">
-                    <span>История</span>
+                    <span>The Story</span>
                     <textarea name="story" rows="4" value={form.story} onChange={handleFormChange} required />
                   </label>
 
                   <label className="field field-wide">
-                    <span>Подача</span>
+                    <span>Sommelier Tip</span>
                     <textarea name="serving" rows="3" value={form.serving} onChange={handleFormChange} required />
                   </label>
                     </>
@@ -2354,49 +2438,36 @@ export default function App() {
 
                   {(adminView !== 'create' || createStep === 'labels') && (
                   <div className="field field-wide">
-                    <span>Этикетки (мастер: front → left → right)</span>
-                    <div className="label-upload-row">
-                      <span className="field-note">Нажми на нужный ракурс ниже: загрузка и crop откроются в модальном окне.</span>
-                      {!!form.labelAssets?.length && (
-                        <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
-                          Убрать все
-                        </button>
-                      )}
-                    </div>
-                    <div className="wizard-status-row">
+                    <span>Upload wine labels from 3 sides</span>
+                    <p className="field-note">Please provide clear images of the bottle packaging.</p>
+                    <div className="wizard-upload-grid">
                       {REQUIRED_LABEL_ROLES.map((role) => {
                         const asset = getAssetByRole(role);
                         return (
                           <button
                             key={role}
                             type="button"
-                            className={`wizard-pill ${asset?.dataUrl ? 'is-done' : ''}`}
+                            className={`upload-slot ${asset?.dataUrl ? 'is-ready' : ''}`}
                             onClick={() => openLabelModal(role)}
                           >
-                            {asset?.dataUrl ? '✅' : '○'} {role}
+                            {asset?.dataUrl ? (
+                              <img src={asset.dataUrl} alt={`Этикетка ${role}`} />
+                            ) : (
+                              <div className="upload-placeholder">Tap to upload</div>
+                            )}
+                            <div className="upload-slot-foot">
+                              <strong>{role[0].toUpperCase() + role.slice(1)}</strong>
+                              <span>{asset?.dataUrl ? 'OK' : 'Required'}</span>
+                            </div>
                           </button>
                         );
                       })}
                     </div>
                     {!!form.labelAssets?.length && (
-                      <div className="wine-grid">
-                        {form.labelAssets.map((asset) => (
-                          <div key={asset.id} className="wine-card">
-                            <p className="field-note"><strong>{asset.role || 'front'}</strong></p>
-                            <img className="label-preview" src={asset.dataUrl} alt={`Этикетка ${asset.role}`} />
-                            <p className="field-note">
-                              {asset.qualityStatus === 'good' && `✅ ${asset.qualityScore}/100`}
-                              {asset.qualityStatus === 'medium' && `⚠️ ${asset.qualityScore}/100`}
-                              {asset.qualityStatus === 'bad' && `❌ ${asset.qualityScore}/100`}
-                              {asset.qualityStatus === 'unknown' && '—'}
-                            </p>
-                            <div className="actions-row">
-                              <button className="ghost-btn" type="button" onClick={() => openLabelModal(asset.role)}>
-                                Открыть
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="actions-row">
+                        <button className="ghost-btn" type="button" onClick={handleClearLabelImage}>
+                          Очистить
+                        </button>
                       </div>
                     )}
                     {form.qualityStatus !== 'unknown' && (
@@ -2438,9 +2509,6 @@ export default function App() {
                         {mindBuildStatus.text}
                       </p>
                     )}
-                    <p className="field-note">
-                      После front/left/right нажми «Обработать этикетку», затем «Продолжить».
-                    </p>
                     <div className="actions-row">
                       <button className="primary-btn" type="button" onClick={handleProcessLabel}>
                         Обработать этикетку
@@ -2452,7 +2520,7 @@ export default function App() {
                           onClick={handleContinueToWineCard}
                           disabled={!hasRequiredLabelShots}
                         >
-                          Продолжить
+                          Next Step
                         </button>
                       )}
                     </div>
@@ -2462,7 +2530,7 @@ export default function App() {
                   {(adminView !== 'create' || createStep === 'form') && (
                     <>
                   <div className="field field-wide">
-                    <span>Автозаполнение</span>
+                    <span>Autofill</span>
                     <div className="actions-row">
                       <button className="ghost-btn" type="button" onClick={handleAutofillFromLabel}>
                         Заполнить из этикетки
@@ -2470,7 +2538,7 @@ export default function App() {
                     </div>
                   </div>
                   <label className="field field-wide">
-                    <span>Pairings (запятая или новая строка)</span>
+                    <span>Sensory map tags (запятая или новая строка)</span>
                     <textarea name="pairings" rows="3" value={form.pairings} onChange={handleFormChange} />
                   </label>
 
@@ -2488,10 +2556,10 @@ export default function App() {
                   {adminView === 'create' && createStep === 'form' && (
                     <>
                       <button className="ghost-btn" type="button" onClick={handleSaveDraft}>
-                        Сохранить драфт
+                        Save as Draft
                       </button>
                       <button className="primary-btn" type="submit">
-                        Опубликовать
+                        Publish Wine
                       </button>
                     </>
                   )}
