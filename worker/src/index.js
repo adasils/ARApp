@@ -160,6 +160,18 @@ function getR2PublicBase(env) {
   return base;
 }
 
+async function fetchR2Object(env, key) {
+  const aws = getAwsClient(env);
+  const base = getR2S3Base(env);
+  if (!aws || !base) {
+    throw new Error('R2 credentials are not configured.');
+  }
+  const response = await aws.fetch(`${base}/${key}`, {
+    method: 'GET',
+  });
+  return response;
+}
+
 async function createPresignedUrl(env, { method, key, expiresIn = 600, contentType = '' }) {
   const aws = getAwsClient(env);
   const base = getR2S3Base(env);
@@ -638,30 +650,52 @@ export default {
         return json({ error: 'Mind metadata invalid.' }, 500);
       }
 
-      const publicBase = getR2PublicBase(env);
-      if (publicBase) {
-        return json({
-          url: `${publicBase}/${key}?v=${encodeURIComponent(hash || Date.now())}`,
-          hash: hash || null,
-          key,
-          targetCount,
-          targetWineMap,
-        });
-      }
-
-      const presigned = await createPresignedUrl(env, {
-        method: 'GET',
-        key,
-        expiresIn: 1800,
-      });
-      const suffix = hash ? `${presigned.url.includes('?') ? '&' : '?'}v=${encodeURIComponent(hash)}` : '';
       return json({
-        url: `${presigned.url}${suffix}`,
+        url: `/api/mind/file?wineId=${encodeURIComponent(wineId)}${hash ? `&v=${encodeURIComponent(hash)}` : ''}`,
         hash: hash || null,
         key,
         targetCount,
         targetWineMap,
       });
+    }
+
+    if (url.pathname === '/api/mind/file' && request.method === 'GET') {
+      const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
+      const raw = await env.WINES_KV.get(getMindLatestKey(wineId));
+      if (!raw) {
+        return json({ error: 'Mind dataset not found.' }, 404);
+      }
+
+      let latest = null;
+      try {
+        latest = JSON.parse(raw);
+      } catch {
+        return json({ error: 'Mind metadata corrupted.' }, 500);
+      }
+
+      const key = String(latest?.key || '').trim();
+      const hash = String(latest?.hash || '').trim();
+      if (!key) {
+        return json({ error: 'Mind metadata invalid.' }, 500);
+      }
+
+      try {
+        const upstream = await fetchR2Object(env, key);
+        if (!upstream.ok || !upstream.body) {
+          return json({ error: `Failed to load mind dataset (${upstream.status}).` }, 502);
+        }
+        return new Response(upstream.body, {
+          status: 200,
+          headers: withRequestCorsHeaders({
+            'Content-Type': 'application/octet-stream',
+            'Cache-Control': hash
+              ? `public, max-age=300, stale-while-revalidate=600, immutable`
+              : 'public, max-age=60',
+          }),
+        });
+      } catch (error) {
+        return json({ error: error.message || 'Failed to load mind dataset.' }, 502);
+      }
     }
 
     if (url.pathname === '/api/recognize/ocr' && request.method === 'POST') {
