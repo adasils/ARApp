@@ -1269,8 +1269,17 @@ export default function App() {
       setNotice({ text: `Сначала загрузи и проверь фото для ракурса ${role}.`, type: 'error' });
       return;
     }
-    closeLabelModal();
-    setNotice({ text: `Ракурс ${role} сохранен.`, type: 'success' });
+    applyCropToAsset()
+      .then((ok) => {
+        if (!ok) {
+          return;
+        }
+        closeLabelModal();
+        setNotice({ text: `Ракурс ${role} сохранен.`, type: 'success' });
+      })
+      .catch((error) => {
+        setNotice({ text: error.message || 'Не удалось сохранить crop.', type: 'error' });
+      });
   }
 
   async function handleRoleModalUpload(event) {
@@ -1495,7 +1504,7 @@ export default function App() {
   async function applyCropToAsset() {
     const asset = normalizeLabelAssets(form.labelAssets).find((item) => item.id === cropEditor.assetId);
     if (!asset?.dataUrl) {
-      return;
+      return false;
     }
     try {
       const image = await loadImage(asset.dataUrl);
@@ -1541,9 +1550,10 @@ export default function App() {
         targetIndex: null,
         error: '',
       });
-      setNotice({ text: `Кадрирование применено. Качество: ${quality.score}/100.`, type: 'success' });
+      return true;
     } catch (error) {
       setNotice({ text: error.message || 'Не удалось применить crop.', type: 'error' });
+      return false;
     }
   }
 
@@ -2346,7 +2356,7 @@ export default function App() {
                 </button>
               </div>
               <p className="field-note">
-                Загрузи фото, затем выдели область этикетки и нажми «Применить crop».
+                Загрузи фото и перетащи рамку прямо на изображении. Когда все ок, нажми «Сохранить».
               </p>
               <div className="label-upload-row">
                 <input type="file" accept="image/*" onChange={handleRoleModalUpload} />
@@ -2393,11 +2403,8 @@ export default function App() {
                   </div>
                   <p className="field-note">Тяни рамку за углы/стороны или перемещай её целиком.</p>
                   <div className="actions-row">
-                    <button className="primary-btn" type="button" onClick={applyCropToAsset}>
-                      Применить crop
-                    </button>
                     <button className="primary-btn" type="button" onClick={saveAndCloseLabelModal}>
-                      Сохранить ракурс
+                      Сохранить
                     </button>
                   </div>
                 </>

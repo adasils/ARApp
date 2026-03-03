@@ -747,15 +747,16 @@ h2 {
   overflow: hidden;
   border: 1px solid rgba(186, 213, 255, 0.25);
   background: rgba(15, 24, 41, 0.62);
-  min-height: 240px;
+  touch-action: none;
 }
 
 .crop-stage-image {
   display: block;
   width: 100%;
-  max-height: min(56vh, 560px);
-  object-fit: contain;
+  height: auto;
   margin: 0 auto;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .crop-stage-box {
@@ -763,6 +764,7 @@ h2 {
   border: 2px solid rgba(156, 221, 255, 0.95);
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.34);
   cursor: move;
+  touch-action: none;
 }
 
 .crop-handle {
@@ -774,6 +776,7 @@ h2 {
   background: #9be7ff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   padding: 0;
+  touch-action: none;
 }
 
 .crop-handle.is-nw,
