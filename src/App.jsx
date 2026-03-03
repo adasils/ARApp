@@ -1730,20 +1730,40 @@ export default function App() {
         }),
       });
       const parsed = extractPrefillFromOcr(payload?.ocr_text_raw || payload?.ocr_text || '');
+      let filledCount = 0;
       setForm((prev) => {
         const nextTitle = prev.title || parsed.title || '';
         const nextYear = prev.year || parsed.year || '';
         const nextRegion = prev.region || parsed.region || '';
+        const nextProducer = prev.producer || parsed.producer || '';
+        const nextSubtitle = prev.subtitle || [nextRegion, nextYear].filter(Boolean).join(', ');
+        filledCount = [
+          !prev.title && Boolean(nextTitle),
+          !prev.year && Boolean(nextYear),
+          !prev.region && Boolean(nextRegion),
+          !prev.producer && Boolean(nextProducer),
+          !prev.subtitle && Boolean(nextSubtitle),
+        ].filter(Boolean).length;
         return {
           ...prev,
           title: nextTitle,
           year: nextYear,
-          producer: prev.producer || parsed.producer || '',
+          producer: nextProducer,
           region: nextRegion,
-          subtitle: prev.subtitle || [nextRegion, nextYear].filter(Boolean).join(', '),
+          subtitle: nextSubtitle,
         };
       });
-      setNotice({ text: 'Поля заполнены из этикетки. Проверь и поправь при необходимости.', type: 'success' });
+      if (filledCount > 0) {
+        setNotice({
+          text: `Автозаполнение сработало: заполнено полей ${filledCount}. Проверь и поправь при необходимости.`,
+          type: 'success',
+        });
+      } else {
+        setNotice({
+          text: 'OCR не смог извлечь данные для автозаполнения. Проверь качество front и наличие OCR ключа на backend.',
+          type: 'error',
+        });
+      }
     } catch (error) {
       setNotice({ text: error.message || 'Не удалось распознать текст этикетки.', type: 'error' });
     }
