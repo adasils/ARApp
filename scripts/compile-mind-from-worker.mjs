@@ -1,5 +1,6 @@
 import { OfflineCompiler } from 'mind-ar/src/image-target/offline-compiler.js';
 import { loadImage } from 'canvas';
+import crypto from 'node:crypto';
 
 function normalizeApiBase(value) {
   const raw = String(value || '').trim();
@@ -64,22 +65,67 @@ function toBase64(uint8Array) {
 
 function buildSignature(records) {
   return records
-    .map((record) => `${record.targetIndex}:${record.labelHash}`)
+    .map((record) => `${record.wineId}:${record.role}:${record.assetHash}`)
     .join('|');
 }
 
+function normalizeRole(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return value || 'alt';
+}
+
+function buildRecordsFromWines(wines) {
+  const records = [];
+  (wines || []).forEach((wine) => {
+    const wineId = String(wine?.id || '').trim();
+    if (!wineId) {
+      return;
+    }
+    const assets = Array.isArray(wine?.labelAssets) ? wine.labelAssets : [];
+    const sourceAssets = assets.length
+      ? assets
+      : (String(wine?.labelImage || '').trim().startsWith('data:image/')
+        ? [{ role: 'front', dataUrl: String(wine.labelImage).trim() }]
+        : []);
+
+    sourceAssets.forEach((asset, index) => {
+      const dataUrl = String(asset?.dataUrl || '').trim();
+      if (!dataUrl.startsWith('data:image/')) {
+        return;
+      }
+      const role = normalizeRole(asset?.role) || `asset-${index + 1}`;
+      const assetHash = crypto.createHash('sha256').update(dataUrl).digest('hex');
+      records.push({
+        wineId,
+        role,
+        dataUrl,
+        assetHash,
+      });
+    });
+  });
+
+  return records;
+}
+
 async function main() {
-  const [{ records }, { manifest }] = await Promise.all([
-    apiGet('/labels/records'),
+  const [{ wines }, { manifest }] = await Promise.all([
+    apiGet('/wines'),
     fetch(`${apiBase}/targets/manifest`).then((r) => r.json()).catch(() => ({ manifest: null })),
   ]);
 
-  if (!Array.isArray(records) || records.length === 0) {
-    console.log('No ready label records found. Skip compilation.');
+  const sourceRecords = buildRecordsFromWines(wines);
+
+  if (!Array.isArray(sourceRecords) || sourceRecords.length === 0) {
+    console.log('No label assets found in wines. Skip compilation.');
     return;
   }
 
-  const orderedRecords = [...records].sort((a, b) => a.targetIndex - b.targetIndex);
+  const orderedRecords = [...sourceRecords].sort((a, b) => {
+    if (a.wineId !== b.wineId) {
+      return a.wineId.localeCompare(b.wineId);
+    }
+    return a.role.localeCompare(b.role);
+  });
   const signature = buildSignature(orderedRecords);
 
   if (manifest?.manifest?.ready && manifest.manifest.signature === signature) {
@@ -108,10 +154,15 @@ async function main() {
     mindBase64,
     signature,
     targetCount: orderedRecords.length,
-    labelHashes: orderedRecords.map((record) => record.labelHash),
+    labelHashes: orderedRecords.map((record) => record.assetHash),
+    targetWineMap: orderedRecords.map((record) => ({
+      wineId: record.wineId,
+      role: record.role,
+      assetHash: record.assetHash,
+    })),
   });
 
-  console.log(`Compiled ${orderedRecords.length} labels and uploaded targets.mind`);
+  console.log(`Compiled ${orderedRecords.length} label assets and uploaded targets.mind`);
 }
 
 main().catch((error) => {

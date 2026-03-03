@@ -245,10 +245,19 @@ async function getTargetsManifest(env) {
       signature: null,
       compiledAt: null,
       labelHashes: [],
+      targetWineMap: [],
     };
   }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return {
+      ready: Boolean(parsed?.ready),
+      targetCount: Number.parseInt(parsed?.targetCount, 10) || 0,
+      signature: parsed?.signature || null,
+      compiledAt: parsed?.compiledAt || null,
+      labelHashes: Array.isArray(parsed?.labelHashes) ? parsed.labelHashes : [],
+      targetWineMap: normalizeTargetWineMap(parsed?.targetWineMap),
+    };
   } catch {
     return {
       ready: false,
@@ -256,6 +265,7 @@ async function getTargetsManifest(env) {
       signature: null,
       compiledAt: null,
       labelHashes: [],
+      targetWineMap: [],
     };
   }
 }
@@ -288,6 +298,19 @@ function isAdminRequest(request, env) {
   return expected && received && expected === received;
 }
 
+function normalizeTargetWineMap(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => ({
+      wineId: String(item?.wineId || '').trim(),
+      role: String(item?.role || '').trim() || null,
+      assetHash: String(item?.assetHash || '').trim() || null,
+    }))
+    .filter((item) => item.wineId);
+}
+
 function normalizeDataUrl(labelImage) {
   const image = String(labelImage || '').trim();
   const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
@@ -309,6 +332,43 @@ async function sha256Hex(input) {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const digestArray = Array.from(new Uint8Array(digest));
   return digestArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function extractOcrTextFromImage(dataUrl, env) {
+  const apiKey = String(env.OCR_SPACE_API_KEY || '').trim();
+  if (!apiKey || !dataUrl) {
+    return '';
+  }
+
+  const body = new URLSearchParams();
+  body.set('apikey', apiKey);
+  body.set('base64Image', dataUrl);
+  body.set('language', 'eng');
+  body.set('isOverlayRequired', 'false');
+  body.set('OCREngine', '2');
+
+  const response = await fetch('https://api.ocr.space/parse/image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    return '';
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!payload || payload.IsErroredOnProcessing) {
+    return '';
+  }
+
+  const parsed = Array.isArray(payload.ParsedResults) ? payload.ParsedResults : [];
+  return parsed
+    .map((item) => String(item?.ParsedText || '').trim())
+    .filter(Boolean)
+    .join(' ');
 }
 
 function getNextTargetIndex(labelIndexMap) {
@@ -353,7 +413,11 @@ export default {
     if (url.pathname === '/api/recognize/ocr' && request.method === 'POST') {
       try {
         const payload = await request.json();
-        const queryText = normalizeQueryText(payload?.ocr_text || '');
+        const provided = normalizeQueryText(payload?.ocr_text || '');
+        const fallbackOcr = provided
+          ? ''
+          : normalizeQueryText(await extractOcrTextFromImage(String(payload?.image_base64 || ''), env));
+        const queryText = provided || fallbackOcr;
         if (!queryText) {
           return json({ matches: [], best: null });
         }
@@ -376,7 +440,7 @@ export default {
           ? { wine_id: matches[0].wine_id, score: matches[0].score }
           : null;
 
-        return json({ matches, best });
+        return json({ matches, best, ocr_text: queryText });
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
       }
@@ -598,6 +662,7 @@ export default {
           : [];
         const signature = String(payload?.signature || '').trim() || null;
         const targetCount = Number.parseInt(payload?.targetCount, 10) || 0;
+        const targetWineMap = normalizeTargetWineMap(payload?.targetWineMap);
 
         if (!mindBase64) {
           return json({ error: 'mindBase64 is required.' }, 400);
@@ -609,6 +674,7 @@ export default {
           targetCount,
           signature,
           labelHashes,
+          targetWineMap,
           compiledAt: Date.now(),
         });
         return json({ ok: true });

@@ -446,6 +446,7 @@ export default function App() {
   const [mindTargetSrc, setMindTargetSrc] = useState(DEMO_MIND_TARGET_SRC);
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
   const [compiledTargetCount, setCompiledTargetCount] = useState(0);
+  const [compiledTargetWineMap, setCompiledTargetWineMap] = useState([]);
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
   const [recognitionPhase, setRecognitionPhase] = useState('TRY_MINDAR');
@@ -573,11 +574,15 @@ export default function App() {
           const loaded = normalizeWines(payload.wines || []);
           const hasCompiledTargets = Boolean(manifestPayload?.manifest?.ready);
           const targetCount = Number.parseInt(manifestPayload?.manifest?.targetCount, 10) || 0;
+          const targetWineMap = Array.isArray(manifestPayload?.manifest?.targetWineMap)
+            ? manifestPayload.manifest.targetWineMap
+            : [];
           if (!active) {
             return;
           }
           setCompiledTargetsReady(hasCompiledTargets);
           setCompiledTargetCount(targetCount);
+          setCompiledTargetWineMap(targetWineMap);
           setMindTargetSrc(`${API_BASE_URL}/targets/mind`);
           setWines(loaded);
           if (loaded[0]) {
@@ -591,6 +596,7 @@ export default function App() {
 
         setCompiledTargetsReady(false);
         setCompiledTargetCount(0);
+        setCompiledTargetWineMap([]);
         setMindTargetSrc(DEMO_MIND_TARGET_SRC);
         const localData = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (localData) {
@@ -870,8 +876,10 @@ export default function App() {
         const manifest = await fetchTargetsManifest();
         const hasCompiledTargets = Boolean(manifest?.ready);
         const targetCount = Number.parseInt(manifest?.targetCount, 10) || 0;
+        const targetWineMap = Array.isArray(manifest?.targetWineMap) ? manifest.targetWineMap : [];
         setCompiledTargetsReady(hasCompiledTargets);
         setCompiledTargetCount(targetCount);
+        setCompiledTargetWineMap(targetWineMap);
         if (!hasCompiledTargets) {
           setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
           return;
@@ -919,7 +927,11 @@ export default function App() {
     }
 
     const wine = wines.find((item) => item.targetIndex === targetIndex);
-    if (!wine) {
+    const mappedWineId = Array.isArray(compiledTargetWineMap) ? compiledTargetWineMap[targetIndex]?.wineId : null;
+    const resolvedWine = mappedWineId
+      ? wines.find((item) => item.id === mappedWineId)
+      : wine;
+    if (!resolvedWine) {
       return;
     }
 
@@ -939,7 +951,7 @@ export default function App() {
 
     const completeTimer = window.setTimeout(async () => {
       setScanFeedbackPhase('idle');
-      setContentWine(wine);
+      setContentWine(resolvedWine);
       setMode('content');
       await stopAr();
     }, LOADER_MS + BURST_MS + DONE_MS);
