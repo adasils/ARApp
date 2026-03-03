@@ -1,6 +1,12 @@
 name = "wwine-label-api"
 main = "src/index.js"
 compatibility_date = "2026-03-02"
+keep_vars = true
+
+[vars]
+CF_ACCOUNT_ID = "b6f4d9dc0a741776d4131a421cc364d2"
+R2_BUCKET = "wine-labels"
+ALLOWED_ORIGIN = "https://vinoria.app"
 
 [[kv_namespaces]]
 binding = "WINES_KV"
