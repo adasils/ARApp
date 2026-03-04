@@ -14,8 +14,8 @@ const VISUAL_ACCEPT_MIN_SCORE = 0.5;
 const VISUAL_ACCEPT_MIN_MARGIN = 0.08;
 const OCR_VISUAL_AUTO_OPEN_OCR_MIN = 0.78;
 const OCR_VISUAL_AUTO_OPEN_VISUAL_MIN = 0.62;
-const VISUAL_FRAME_MIN_SHARPNESS = 8.5;
-const VISUAL_FRAME_MAX_HIGHLIGHT = 0.24;
+const VISUAL_FRAME_MIN_SHARPNESS = 6.5;
+const VISUAL_FRAME_MAX_HIGHLIGHT = 0.35;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right'];
@@ -1293,13 +1293,12 @@ export default function App() {
       setRecognitionPhase('FALLBACK_VISUAL');
       setRecognitionHint('Ищу по изображению...');
 
-      if (
+      const frameLooksPoor = (
         frame?.quality?.sharpness < VISUAL_FRAME_MIN_SHARPNESS
         || frame?.quality?.highlightRatio > VISUAL_FRAME_MAX_HIGHLIGHT
-      ) {
-        setRecognitionPhase('NOT_FOUND');
-        setRecognitionHint('Кадр некачественный: добавь свет и убери блики.');
-        return;
+      );
+      if (frameLooksPoor) {
+        setRecognitionHint('Кадр неидеальный, продолжаю искать...');
       }
 
       const visualPayload = await apiFetch('/api/recognize/visual', {
@@ -1340,7 +1339,7 @@ export default function App() {
             return;
           }
 
-          setRecognitionHint('Кандидат найден по изображению. Наведи камеру точнее на этикетку.');
+          setRecognitionHint('Есть возможное совпадение. Наведи камеру точнее на этикетку.');
           const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
           if (shardId && shardId !== currentMindShardId) {
             setRecognitionHint('Кандидат найден, переключаю shard для проверки target...');
@@ -1356,7 +1355,11 @@ export default function App() {
       }
 
       setRecognitionPhase('NOT_FOUND');
-      setRecognitionHint('Не нашли этикетку. Убери блики и наведи камеру ближе.');
+      setRecognitionHint(
+        frameLooksPoor
+          ? 'Пока неуверенно. Держи этикетку крупнее и без бликов — продолжаю искать.'
+          : 'Не нашли этикетку. Наведи камеру ближе, продолжаю поиск.'
+      );
       scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1200);
     } catch (error) {
       const text = String(error?.message || '');
