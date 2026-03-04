@@ -9,6 +9,11 @@ const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
 const MINDAR_TIMEOUT_MS = 3200;
+const OCR_ACCEPT_MIN_SCORE = 0.62;
+const VISUAL_ACCEPT_MIN_SCORE = 0.5;
+const VISUAL_ACCEPT_MIN_MARGIN = 0.08;
+const VISUAL_FRAME_MIN_SHARPNESS = 8.5;
+const VISUAL_FRAME_MAX_HIGHLIGHT = 0.24;
 const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right'];
@@ -1161,7 +1166,8 @@ export default function App() {
         }),
       }).catch(() => ({ best: null }));
 
-      if (ocrPayload?.best?.wine_id) {
+      const bestOcrScore = Number(ocrPayload?.best?.score || 0);
+      if (ocrPayload?.best?.wine_id && bestOcrScore >= OCR_ACCEPT_MIN_SCORE) {
         const wine = wines.find((item) => item.id === ocrPayload.best.wine_id);
         if (wine) {
           setContentWine(wine);
@@ -1176,6 +1182,15 @@ export default function App() {
       setRecognitionPhase('FALLBACK_VISUAL');
       setRecognitionHint('Ищу по изображению...');
 
+      if (
+        frame?.quality?.sharpness < VISUAL_FRAME_MIN_SHARPNESS
+        || frame?.quality?.highlightRatio > VISUAL_FRAME_MAX_HIGHLIGHT
+      ) {
+        setRecognitionPhase('NOT_FOUND');
+        setRecognitionHint('Кадр некачественный: добавь свет и убери блики.');
+        return;
+      }
+
       const visualPayload = await apiFetch('/api/recognize/visual', {
         method: 'POST',
         body: JSON.stringify({
@@ -1184,7 +1199,16 @@ export default function App() {
         }),
       }).catch(() => ({ best: null }));
 
-      if (visualPayload?.best?.wine_id) {
+      const topMatches = Array.isArray(visualPayload?.matches) ? visualPayload.matches : [];
+      const topScore = Number(visualPayload?.best?.score || visualPayload?.best?.score_cosine || 0);
+      const secondScore = Number(topMatches?.[1]?.score_cosine || 0);
+      const hasConfidentVisualMatch = (
+        visualPayload?.best?.wine_id
+        && topScore >= VISUAL_ACCEPT_MIN_SCORE
+        && (topScore - secondScore) >= VISUAL_ACCEPT_MIN_MARGIN
+      );
+
+      if (hasConfidentVisualMatch) {
         const wine = wines.find((item) => item.id === visualPayload.best.wine_id);
         if (wine) {
           setContentWine(wine);
@@ -1872,7 +1896,7 @@ export default function App() {
             });
             const compiled = compiler.exportData();
             window.clearTimeout(timeoutId);
-            resolve(compiled?.buffer || compiled);
+            resolve(compiled);
           } catch (error) {
             window.clearTimeout(timeoutId);
             reject(new Error(error?.message || 'Не удалось собрать .mind'));
@@ -1880,7 +1904,15 @@ export default function App() {
         })();
       });
 
-      const mindArrayBuffer = compiledBuffer instanceof ArrayBuffer ? compiledBuffer : new Uint8Array(compiledBuffer).buffer;
+      let mindArrayBuffer;
+      if (compiledBuffer instanceof ArrayBuffer) {
+        mindArrayBuffer = compiledBuffer;
+      } else if (ArrayBuffer.isView(compiledBuffer)) {
+        const view = compiledBuffer;
+        mindArrayBuffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+      } else {
+        throw new Error('Компилятор вернул неверный формат .mind.');
+      }
       const hash = await sha256HexFromArrayBuffer(mindArrayBuffer);
       setMindBuildStatus({ phase: 'uploading', progress: 100, text: 'Загружаем в R2...' });
 

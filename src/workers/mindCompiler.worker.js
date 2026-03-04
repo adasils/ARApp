@@ -43,12 +43,22 @@ self.onmessage = async (event) => {
     });
 
     const compiled = compiler.exportData();
+    let bytes = null;
+    if (compiled instanceof ArrayBuffer) {
+      bytes = new Uint8Array(compiled);
+    } else if (ArrayBuffer.isView(compiled)) {
+      bytes = new Uint8Array(compiled.buffer, compiled.byteOffset, compiled.byteLength);
+    } else {
+      throw new Error('Compiler returned invalid dataset buffer.');
+    }
+    const output = new Uint8Array(bytes.byteLength);
+    output.set(bytes);
     self.postMessage(
       {
         type: 'done',
-        buffer: compiled.buffer,
+        buffer: output.buffer,
       },
-      [compiled.buffer]
+      [output.buffer]
     );
   } catch (error) {
     self.postMessage({
