@@ -538,9 +538,6 @@ async function triggerGithubMindBuild(env, wineId = 'global') {
       },
       body: JSON.stringify({
         ref,
-        inputs: {
-          wine_id: String(wineId || 'global'),
-        },
       }),
     });
     if (response.ok) {
