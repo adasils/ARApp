@@ -1112,6 +1112,18 @@ export default function App() {
     }
   }
 
+  function scheduleFallbackRetry(delayMs = MINDAR_TIMEOUT_MS + 800) {
+    if (fallbackTimerRef.current) {
+      window.clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+    fallbackTimerRef.current = window.setTimeout(() => {
+      if (!scanHandledRef.current && modeRef.current === 'scan') {
+        runFallbackRecognition();
+      }
+    }, delayMs);
+  }
+
   function applyCameraStyles() {
     const video = document.querySelector('video.mindar-video');
     if (video) {
@@ -1270,11 +1282,7 @@ export default function App() {
             setRecognitionHint('Найден кандидат, переключаю shard для проверки target...');
             const switched = await switchToMindShard(shardId).catch(() => false);
             if (switched) {
-              fallbackTimerRef.current = window.setTimeout(() => {
-                if (!scanHandledRef.current && modeRef.current === 'scan') {
-                  runFallbackRecognition();
-                }
-              }, MINDAR_TIMEOUT_MS + 1000);
+              scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1000);
               return;
             }
           }
@@ -1338,39 +1346,29 @@ export default function App() {
             setRecognitionHint('Кандидат найден, переключаю shard для проверки target...');
             const switched = await switchToMindShard(shardId).catch(() => false);
             if (switched) {
-              fallbackTimerRef.current = window.setTimeout(() => {
-                if (!scanHandledRef.current && modeRef.current === 'scan') {
-                  runFallbackRecognition();
-                }
-              }, MINDAR_TIMEOUT_MS + 1000);
+              scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1000);
               return;
             }
           }
-          fallbackTimerRef.current = window.setTimeout(() => {
-            if (!scanHandledRef.current && modeRef.current === 'scan') {
-              runFallbackRecognition();
-            }
-          }, MINDAR_TIMEOUT_MS + 1000);
+          scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1000);
           return;
         }
       }
 
       setRecognitionPhase('NOT_FOUND');
       setRecognitionHint('Не нашли этикетку. Убери блики и наведи камеру ближе.');
+      scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1200);
     } catch (error) {
       const text = String(error?.message || '');
       if (text.includes('Камера еще не готова')) {
         setRecognitionPhase('TRY_MINDAR');
         setRecognitionHint('Подожди секунду, камера настраивается...');
-        fallbackTimerRef.current = window.setTimeout(() => {
-          if (!scanHandledRef.current && modeRef.current === 'scan') {
-            runFallbackRecognition();
-          }
-        }, 1200);
+        scheduleFallbackRetry(1200);
         return;
       }
       setRecognitionPhase('NOT_FOUND');
       setRecognitionHint('Не удалось распознать этикетку. Попробуй другой угол без бликов.');
+      scheduleFallbackRetry(MINDAR_TIMEOUT_MS + 1200);
     }
   }
 
@@ -1408,11 +1406,7 @@ export default function App() {
       await new Promise((resolve) => window.setTimeout(resolve, 80));
       await startAr();
 
-      fallbackTimerRef.current = window.setTimeout(() => {
-        if (!scanHandledRef.current && modeRef.current === 'scan') {
-          runFallbackRecognition();
-        }
-      }, MINDAR_TIMEOUT_MS);
+      scheduleFallbackRetry(MINDAR_TIMEOUT_MS);
     } catch (error) {
       setMode('home');
       setStartError(error.message || 'Проверь доступ к камере и попробуй снова.');
