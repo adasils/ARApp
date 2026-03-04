@@ -9,9 +9,11 @@ const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
 const MINDAR_TIMEOUT_MS = 3200;
-const OCR_ACCEPT_MIN_SCORE = 0.72;
-const VISUAL_ACCEPT_MIN_SCORE = 0.62;
-const VISUAL_ACCEPT_MIN_MARGIN = 0.12;
+const OCR_ACCEPT_MIN_SCORE = 0.62;
+const VISUAL_ACCEPT_MIN_SCORE = 0.5;
+const VISUAL_ACCEPT_MIN_MARGIN = 0.08;
+const OCR_VISUAL_AUTO_OPEN_OCR_MIN = 0.78;
+const OCR_VISUAL_AUTO_OPEN_VISUAL_MIN = 0.62;
 const VISUAL_FRAME_MIN_SHARPNESS = 8.5;
 const VISUAL_FRAME_MAX_HIGHLIGHT = 0.24;
 const LABEL_MAX_SIDE = 1800;
@@ -1242,6 +1244,8 @@ export default function App() {
       setRecognitionPhase('FALLBACK_OCR');
       setRecognitionHint('Ищу по тексту...');
       const frame = await captureBestFrameFromVideo();
+      let ocrCandidateWineId = '';
+      let ocrCandidateScore = 0;
 
       const ocrPayload = await apiFetch('/api/recognize/ocr', {
         method: 'POST',
@@ -1256,6 +1260,8 @@ export default function App() {
       const ocrRawText = String(ocrPayload?.ocr_text_raw || '').trim();
       const ocrWordCount = (ocrRawText.match(/[a-zа-яё]{3,}/gi) || []).length;
       if (ocrPayload?.best?.wine_id && bestOcrScore >= OCR_ACCEPT_MIN_SCORE && ocrWordCount >= 2) {
+        ocrCandidateWineId = String(ocrPayload.best.wine_id || '');
+        ocrCandidateScore = bestOcrScore;
         const wine = wines.find((item) => item.id === ocrPayload.best.wine_id);
         if (wine) {
           setRecognitionHint('Найден кандидат. Наведи камеру точнее для подтверждения target.');
@@ -1272,12 +1278,7 @@ export default function App() {
               return;
             }
           }
-          fallbackTimerRef.current = window.setTimeout(() => {
-            if (!scanHandledRef.current && modeRef.current === 'scan') {
-              runFallbackRecognition();
-            }
-          }, MINDAR_TIMEOUT_MS + 1000);
-          return;
+          // keep going to visual stage to confirm candidate and reduce false positives
         }
       }
 
@@ -1313,6 +1314,24 @@ export default function App() {
       if (hasConfidentVisualMatch) {
         const wine = wines.find((item) => item.id === visualPayload.best.wine_id);
         if (wine) {
+          const visualWineId = String(visualPayload.best.wine_id || '');
+          const isConsensus = (
+            visualWineId
+            && ocrCandidateWineId
+            && visualWineId === ocrCandidateWineId
+            && ocrCandidateScore >= OCR_VISUAL_AUTO_OPEN_OCR_MIN
+            && topScore >= OCR_VISUAL_AUTO_OPEN_VISUAL_MIN
+          );
+
+          if (isConsensus) {
+            setRecognitionPhase('MINDAR_LOCKED');
+            setRecognitionHint('');
+            setContentWine(wine);
+            setMode('content');
+            await stopAr();
+            return;
+          }
+
           setRecognitionHint('Кандидат найден по изображению. Наведи камеру точнее на этикетку.');
           const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
           if (shardId && shardId !== currentMindShardId) {
