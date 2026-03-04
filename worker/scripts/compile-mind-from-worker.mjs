@@ -109,20 +109,19 @@ function normalizeRecordsFromWines(wines) {
     }
     const assets = Array.isArray(wine?.labelAssets) ? wine.labelAssets : [];
     if (assets.length) {
-      assets.forEach((asset) => {
-        const dataUrl = String(asset?.dataUrl || '').trim();
-        if (!dataUrl) {
-          return;
-        }
-        const role = String(asset?.role || 'front').trim() || 'front';
-        const hash = crypto.createHash('sha256').update(dataUrl).digest('hex');
-        rows.push({
-          labelHash: hash,
-          targetIndex: Number.parseInt(wine?.targetIndex, 10) || 0,
-          dataUrl,
-          wineId,
-          role,
-        });
+      const front = assets.find((asset) => String(asset?.role || '').trim() === 'front');
+      const primary = front || assets[0];
+      const dataUrl = String(primary?.dataUrl || '').trim();
+      if (!dataUrl) {
+        return;
+      }
+      const hash = crypto.createHash('sha256').update(dataUrl).digest('hex');
+      rows.push({
+        labelHash: hash,
+        targetIndex: Number.parseInt(wine?.targetIndex, 10) || 0,
+        dataUrl,
+        wineId,
+        role: 'front',
       });
       return;
     }

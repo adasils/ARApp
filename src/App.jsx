@@ -1987,21 +1987,27 @@ export default function App() {
         draftWine,
       ];
 
-      const compileItems = compileWines.flatMap((wine) => {
-        const assets = normalizeLabelAssets(wine.labelAssets);
-        const sourceAssets = assets.length
-          ? assets
-          : (wine.labelImage ? [{
-            id: `legacy-${wine.id}`,
-            role: 'front',
-            dataUrl: wine.labelImage,
-          }] : []);
-        return sourceAssets.map((asset) => ({
-          wineId: wine.id,
-          role: asset.role || 'front',
-          dataUrl: asset.dataUrl,
-        })).filter((asset) => asset.dataUrl);
-      });
+      const compileItems = compileWines
+        .map((wine) => {
+          const assets = normalizeLabelAssets(wine.labelAssets);
+          const primary = assets.find((asset) => asset.role === 'front') || assets[0] || null;
+          if (primary?.dataUrl) {
+            return {
+              wineId: wine.id,
+              role: 'front',
+              dataUrl: primary.dataUrl,
+            };
+          }
+          if (wine.labelImage) {
+            return {
+              wineId: wine.id,
+              role: 'front',
+              dataUrl: wine.labelImage,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
 
       if (!compileItems.length) {
         throw new Error('Нет этикеток для компиляции.');
