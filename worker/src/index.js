@@ -519,11 +519,9 @@ async function triggerGithubMindBuild(env, wineId = 'global') {
     throw new Error('GitHub workflow trigger is not configured.');
   }
 
-  const refsToTry = [...new Set([
-    configuredRef || null,
-    'master',
-    'main',
-  ].filter(Boolean))];
+  const refsToTry = configuredRef
+    ? [configuredRef]
+    : ['master', 'main'];
 
   let lastError = '';
 
@@ -552,7 +550,7 @@ async function triggerGithubMindBuild(env, wineId = 'global') {
     lastError = `ref=${ref}, status=${response.status}, body=${payload || 'empty'}`;
   }
 
-  throw new Error(`GitHub dispatch failed: ${lastError || 'unknown error'}`);
+  throw new Error(`GitHub dispatch failed (configuredRef=${configuredRef || 'unset'}): ${lastError || 'unknown error'}`);
 }
 
 export default {
