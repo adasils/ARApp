@@ -9,9 +9,9 @@ const LOADER_MS = 850;
 const BURST_MS = 280;
 const DONE_MS = 900;
 const MINDAR_TIMEOUT_MS = 3200;
-const OCR_ACCEPT_MIN_SCORE = 0.62;
-const VISUAL_ACCEPT_MIN_SCORE = 0.5;
-const VISUAL_ACCEPT_MIN_MARGIN = 0.08;
+const OCR_ACCEPT_MIN_SCORE = 0.72;
+const VISUAL_ACCEPT_MIN_SCORE = 0.62;
+const VISUAL_ACCEPT_MIN_MARGIN = 0.12;
 const VISUAL_FRAME_MIN_SHARPNESS = 8.5;
 const VISUAL_FRAME_MAX_HIGHLIGHT = 0.24;
 const LABEL_MAX_SIDE = 1800;
@@ -1253,27 +1253,30 @@ export default function App() {
       }).catch(() => ({ best: null }));
 
       const bestOcrScore = Number(ocrPayload?.best?.score || 0);
-      if (ocrPayload?.best?.wine_id && bestOcrScore >= OCR_ACCEPT_MIN_SCORE) {
+      const ocrRawText = String(ocrPayload?.ocr_text_raw || '').trim();
+      const ocrWordCount = (ocrRawText.match(/[a-zа-яё]{3,}/gi) || []).length;
+      if (ocrPayload?.best?.wine_id && bestOcrScore >= OCR_ACCEPT_MIN_SCORE && ocrWordCount >= 2) {
         const wine = wines.find((item) => item.id === ocrPayload.best.wine_id);
         if (wine) {
+          setRecognitionHint('Найден кандидат. Наведи камеру точнее для подтверждения target.');
           const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
           if (shardId && shardId !== currentMindShardId) {
-            setRecognitionHint('Нашли кандидата, проверяю target в нужном shard...');
+            setRecognitionHint('Найден кандидат, переключаю shard для проверки target...');
             const switched = await switchToMindShard(shardId).catch(() => false);
             if (switched) {
               fallbackTimerRef.current = window.setTimeout(() => {
                 if (!scanHandledRef.current && modeRef.current === 'scan') {
                   runFallbackRecognition();
                 }
-              }, MINDAR_TIMEOUT_MS);
+              }, MINDAR_TIMEOUT_MS + 1000);
               return;
             }
           }
-          setContentWine(wine);
-          setMode('content');
-          setRecognitionPhase('MINDAR_LOCKED');
-          setRecognitionHint('');
-          await stopAr();
+          fallbackTimerRef.current = window.setTimeout(() => {
+            if (!scanHandledRef.current && modeRef.current === 'scan') {
+              runFallbackRecognition();
+            }
+          }, MINDAR_TIMEOUT_MS + 1000);
           return;
         }
       }
@@ -1310,24 +1313,25 @@ export default function App() {
       if (hasConfidentVisualMatch) {
         const wine = wines.find((item) => item.id === visualPayload.best.wine_id);
         if (wine) {
+          setRecognitionHint('Кандидат найден по изображению. Наведи камеру точнее на этикетку.');
           const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
           if (shardId && shardId !== currentMindShardId) {
-            setRecognitionHint('Нашли кандидата, проверяю target в нужном shard...');
+            setRecognitionHint('Кандидат найден, переключаю shard для проверки target...');
             const switched = await switchToMindShard(shardId).catch(() => false);
             if (switched) {
               fallbackTimerRef.current = window.setTimeout(() => {
                 if (!scanHandledRef.current && modeRef.current === 'scan') {
                   runFallbackRecognition();
                 }
-              }, MINDAR_TIMEOUT_MS);
+              }, MINDAR_TIMEOUT_MS + 1000);
               return;
             }
           }
-          setContentWine(wine);
-          setMode('content');
-          setRecognitionPhase('MINDAR_LOCKED');
-          setRecognitionHint('');
-          await stopAr();
+          fallbackTimerRef.current = window.setTimeout(() => {
+            if (!scanHandledRef.current && modeRef.current === 'scan') {
+              runFallbackRecognition();
+            }
+          }, MINDAR_TIMEOUT_MS + 1000);
           return;
         }
       }
