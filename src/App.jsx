@@ -21,26 +21,47 @@ const REQUIRED_LABEL_ROLES = ['front', 'left', 'right'];
 const COMPILE_IMAGE_MAX_SIDE = 960;
 const COMPILE_IMAGE_QUALITY = 0.72;
 const COMPILE_TIMEOUT_MS = 90000;
+const MIND_SHARD_SIZE = 80;
 
 async function fetchTargetsManifest() {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/mind/latest?wineId=global&ts=${Date.now()}`, {
+    const response = await fetch(`${API_BASE_URL}/api/mind/manifest?wineId=global&ts=${Date.now()}`, {
       cache: 'no-store',
     });
     if (!response.ok) {
       return null;
     }
     const payload = await response.json();
+    const shards = Array.isArray(payload?.shards) ? payload.shards : [];
+    const firstShard = shards[0] || null;
     return {
-      ready: Boolean(payload?.url),
-      url: payload?.url || '',
-      hash: payload?.hash || '',
-      targetCount: Number.parseInt(payload?.targetCount, 10) || 0,
-      targetWineMap: Array.isArray(payload?.targetWineMap) ? payload.targetWineMap : [],
+      ready: Boolean(payload?.ready) && shards.length > 0,
+      shards,
+      firstShard: firstShard
+        ? {
+          id: String(firstShard.id || 'shard-0'),
+          url: String(firstShard.url || ''),
+          hash: String(firstShard.hash || ''),
+          targetCount: Number.parseInt(firstShard.targetCount, 10) || 0,
+          targetWineMap: Array.isArray(firstShard.targetWineMap) ? firstShard.targetWineMap : [],
+        }
+        : null,
+      targetCount: Number.parseInt(payload?.totalTargets, 10) || 0,
+      targetWineMap: [],
+      wineShardMap: payload?.wineShardMap && typeof payload.wineShardMap === 'object' ? payload.wineShardMap : {},
     };
   } catch {
     return null;
   }
+}
+
+function chunkArray(items, size) {
+  const chunkSize = Math.max(1, Number.parseInt(size, 10) || 1);
+  const chunks = [];
+  for (let i = 0; i < items.length; i += chunkSize) {
+    chunks.push(items.slice(i, i + chunkSize));
+  }
+  return chunks;
 }
 
 function normalizeString(value) {
@@ -755,6 +776,9 @@ export default function App() {
   const [compiledTargetsReady, setCompiledTargetsReady] = useState(false);
   const [compiledTargetCount, setCompiledTargetCount] = useState(0);
   const [compiledTargetWineMap, setCompiledTargetWineMap] = useState([]);
+  const [compiledShards, setCompiledShards] = useState([]);
+  const [currentMindShardId, setCurrentMindShardId] = useState('');
+  const [compiledWineShardMap, setCompiledWineShardMap] = useState({});
   const [contentWine, setContentWine] = useState(null);
   const [scanFeedbackPhase, setScanFeedbackPhase] = useState('idle');
   const [recognitionPhase, setRecognitionPhase] = useState('TRY_MINDAR');
@@ -986,10 +1010,10 @@ export default function App() {
         ]);
         const loaded = normalizeWines(payload.wines || []);
         const hasCompiledTargets = Boolean(manifestPayload?.ready);
-        const targetCount = Number.parseInt(manifestPayload?.targetCount, 10) || 0;
-        const targetWineMap = Array.isArray(manifestPayload?.targetWineMap)
-          ? manifestPayload.targetWineMap
-          : [];
+        const shards = Array.isArray(manifestPayload?.shards) ? manifestPayload.shards : [];
+        const firstShard = manifestPayload?.firstShard || shards[0] || null;
+        const targetCount = Number.parseInt(firstShard?.targetCount, 10) || 0;
+        const targetWineMap = Array.isArray(firstShard?.targetWineMap) ? firstShard.targetWineMap : [];
 
         if (!active) {
           return;
@@ -998,7 +1022,10 @@ export default function App() {
         setCompiledTargetsReady(hasCompiledTargets);
         setCompiledTargetCount(targetCount);
         setCompiledTargetWineMap(targetWineMap);
-        setMindTargetSrc(hasCompiledTargets && manifestPayload?.url ? manifestPayload.url : '');
+        setCompiledShards(shards);
+        setCompiledWineShardMap(manifestPayload?.wineShardMap && typeof manifestPayload.wineShardMap === 'object' ? manifestPayload.wineShardMap : {});
+        setCurrentMindShardId(firstShard?.id || '');
+        setMindTargetSrc(hasCompiledTargets && firstShard?.url ? firstShard.url : '');
         setWines(loaded);
         if (loaded[0]) {
           setSelectedWineId(loaded[0].id);
@@ -1028,12 +1055,9 @@ export default function App() {
 
     root.innerHTML = '';
 
-    const wineIndexes = [...new Set(wines.map((wine) => wine.targetIndex))].sort((a, b) => a - b);
-    const manifestIndexes = compiledTargetsReady && compiledTargetCount > 0
+    const safeIndexes = compiledTargetsReady && compiledTargetCount > 0
       ? Array.from({ length: compiledTargetCount }, (_, index) => index)
-      : [];
-    const indexes = [...new Set([...wineIndexes, ...manifestIndexes])].sort((a, b) => a - b);
-    const safeIndexes = indexes.length ? indexes : [0];
+      : [0];
 
     const cleanup = [];
 
@@ -1054,7 +1078,7 @@ export default function App() {
       cleanup.forEach((fn) => fn());
       root.innerHTML = '';
     };
-  }, [wines, compiledTargetsReady, compiledTargetCount]);
+  }, [compiledTargetsReady, compiledTargetCount]);
 
   useEffect(() => {
     return () => {
@@ -1144,6 +1168,32 @@ export default function App() {
     document.body.classList.remove('is-scanning');
   }
 
+  async function switchToMindShard(shardId) {
+    const shard = (compiledShards || []).find((item) => String(item?.id) === String(shardId));
+    if (!shard?.url) {
+      return false;
+    }
+
+    const nextMap = Array.isArray(shard.targetWineMap) ? shard.targetWineMap : [];
+    const nextCount = Number.parseInt(shard.targetCount, 10) || 0;
+
+    if (currentMindShardId === shard.id && mindTargetSrc === shard.url) {
+      setCompiledTargetWineMap(nextMap);
+      setCompiledTargetCount(nextCount);
+      return true;
+    }
+
+    clearFeedbackTimers();
+    await stopAr();
+    setCompiledTargetWineMap(nextMap);
+    setCompiledTargetCount(nextCount);
+    setCurrentMindShardId(shard.id);
+    setMindTargetSrc(shard.url);
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    await startAr();
+    return true;
+  }
+
   async function captureBestFrameFromVideo() {
     const video = await waitForMindarVideoReady();
     if (!(video instanceof HTMLVideoElement)) {
@@ -1197,6 +1247,19 @@ export default function App() {
       if (ocrPayload?.best?.wine_id && bestOcrScore >= OCR_ACCEPT_MIN_SCORE) {
         const wine = wines.find((item) => item.id === ocrPayload.best.wine_id);
         if (wine) {
+          const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
+          if (shardId && shardId !== currentMindShardId) {
+            setRecognitionHint('Нашли кандидата, проверяю target в нужном shard...');
+            const switched = await switchToMindShard(shardId).catch(() => false);
+            if (switched) {
+              fallbackTimerRef.current = window.setTimeout(() => {
+                if (!scanHandledRef.current && modeRef.current === 'scan') {
+                  runFallbackRecognition();
+                }
+              }, MINDAR_TIMEOUT_MS);
+              return;
+            }
+          }
           setContentWine(wine);
           setMode('content');
           setRecognitionPhase('MINDAR_LOCKED');
@@ -1238,6 +1301,19 @@ export default function App() {
       if (hasConfidentVisualMatch) {
         const wine = wines.find((item) => item.id === visualPayload.best.wine_id);
         if (wine) {
+          const shardId = String(compiledWineShardMap?.[wine.id] || '').trim();
+          if (shardId && shardId !== currentMindShardId) {
+            setRecognitionHint('Нашли кандидата, проверяю target в нужном shard...');
+            const switched = await switchToMindShard(shardId).catch(() => false);
+            if (switched) {
+              fallbackTimerRef.current = window.setTimeout(() => {
+                if (!scanHandledRef.current && modeRef.current === 'scan') {
+                  runFallbackRecognition();
+                }
+              }, MINDAR_TIMEOUT_MS);
+              return;
+            }
+          }
           setContentWine(wine);
           setMode('content');
           setRecognitionPhase('MINDAR_LOCKED');
@@ -1273,16 +1349,21 @@ export default function App() {
 
       const manifest = await fetchTargetsManifest();
       const hasCompiledTargets = Boolean(manifest?.ready);
-      const targetCount = Number.parseInt(manifest?.targetCount, 10) || 0;
-      const targetWineMap = Array.isArray(manifest?.targetWineMap) ? manifest.targetWineMap : [];
+      const shards = Array.isArray(manifest?.shards) ? manifest.shards : [];
+      const firstShard = manifest?.firstShard || shards[0] || null;
+      const targetCount = Number.parseInt(firstShard?.targetCount, 10) || 0;
+      const targetWineMap = Array.isArray(firstShard?.targetWineMap) ? firstShard.targetWineMap : [];
       setCompiledTargetsReady(hasCompiledTargets);
       setCompiledTargetCount(targetCount);
       setCompiledTargetWineMap(targetWineMap);
+      setCompiledShards(shards);
+      setCompiledWineShardMap(manifest?.wineShardMap && typeof manifest.wineShardMap === 'object' ? manifest.wineShardMap : {});
+      setCurrentMindShardId(firstShard?.id || '');
       if (!hasCompiledTargets) {
         setStartError('Этикетки еще не готовы для сканера. Дождись завершения Compile Mind Targets.');
         return;
       }
-      setMindTargetSrc(manifest?.url || '');
+      setMindTargetSrc(firstShard?.url || '');
 
       setArBooted(true);
       setMode('scan');
@@ -1898,76 +1979,121 @@ export default function App() {
       }
 
       setMindBuildStatus({ phase: 'preparing', progress: 0, text: 'Оптимизируем фото перед компиляцией...' });
-      const compileImages = await Promise.all(
-        compileItems.map((item) => downscaleForCompile(item.dataUrl).catch(() => item.dataUrl))
+      const optimizedItems = await Promise.all(
+        compileItems.map(async (item) => ({
+          ...item,
+          dataUrl: await downscaleForCompile(item.dataUrl).catch(() => item.dataUrl),
+        }))
       );
 
-      const compiledBuffer = await new Promise((resolve, reject) => {
-        const timeoutId = window.setTimeout(() => {
-          reject(new Error('Компиляция заняла слишком много времени. Попробуй уменьшить количество фото или их размер.'));
-        }, COMPILE_TIMEOUT_MS);
-        (async () => {
-          try {
-            const compiled = await compileMindInWorker(compileImages, (progress) => {
-              setMindBuildStatus({
-                phase: 'compiling',
-                progress: Number.parseInt(progress, 10) || 0,
-                text: `Компиляция ${Number.parseInt(progress, 10) || 0}%`,
-              });
-            });
-            window.clearTimeout(timeoutId);
-            resolve(compiled);
-          } catch (error) {
-            window.clearTimeout(timeoutId);
-            reject(new Error(error?.message || 'Не удалось собрать .mind'));
-          }
-        })();
-      });
+      const shardChunks = chunkArray(optimizedItems, MIND_SHARD_SIZE);
+      const builtShards = [];
 
-      let mindArrayBuffer;
-      if (compiledBuffer instanceof ArrayBuffer) {
-        mindArrayBuffer = compiledBuffer;
-      } else if (ArrayBuffer.isView(compiledBuffer)) {
-        const view = compiledBuffer;
-        mindArrayBuffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
-      } else {
-        throw new Error('Компилятор вернул неверный формат .mind.');
-      }
-      const hash = await sha256HexFromArrayBuffer(mindArrayBuffer);
-      setMindBuildStatus({ phase: 'uploading', progress: 100, text: 'Загружаем в R2...' });
+      for (let shardIndex = 0; shardIndex < shardChunks.length; shardIndex += 1) {
+        const shardItems = shardChunks[shardIndex];
+        const shardId = `shard-${shardIndex}`;
+        const compileProgressBase = Math.round((shardIndex / Math.max(1, shardChunks.length)) * 100);
 
-      const presign = await apiFetch('/api/admin/mind/presign-put', {
-        method: 'POST',
-        body: JSON.stringify({
-          wineId: 'global',
+        const compiledBuffer = await new Promise((resolve, reject) => {
+          const timeoutId = window.setTimeout(() => {
+            reject(new Error(`Компиляция shard ${shardIndex + 1} заняла слишком много времени.`));
+          }, COMPILE_TIMEOUT_MS);
+          (async () => {
+            try {
+              const compiled = await compileMindInWorker(
+                shardItems.map((item) => item.dataUrl),
+                (progress) => {
+                  const normalizedProgress = Number.parseInt(progress, 10) || 0;
+                  const overall = Math.min(
+                    99,
+                    compileProgressBase + Math.round(normalizedProgress / Math.max(1, shardChunks.length))
+                  );
+                  setMindBuildStatus({
+                    phase: 'compiling',
+                    progress: overall,
+                    text: `Компиляция shard ${shardIndex + 1}/${shardChunks.length}: ${normalizedProgress}%`,
+                  });
+                }
+              );
+              window.clearTimeout(timeoutId);
+              resolve(compiled);
+            } catch (error) {
+              window.clearTimeout(timeoutId);
+              reject(new Error(error?.message || `Не удалось собрать shard ${shardIndex + 1}`));
+            }
+          })();
+        });
+
+        let mindArrayBuffer;
+        if (compiledBuffer instanceof ArrayBuffer) {
+          mindArrayBuffer = compiledBuffer;
+        } else if (ArrayBuffer.isView(compiledBuffer)) {
+          const view = compiledBuffer;
+          mindArrayBuffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+        } else {
+          throw new Error('Компилятор вернул неверный формат .mind.');
+        }
+
+        const hash = await sha256HexFromArrayBuffer(mindArrayBuffer);
+        setMindBuildStatus({
+          phase: 'uploading',
+          progress: Math.max(1, Math.round(((shardIndex + 1) / Math.max(1, shardChunks.length)) * 100)),
+          text: `Загружаем shard ${shardIndex + 1}/${shardChunks.length}...`,
+        });
+
+        const presign = await apiFetch('/api/admin/mind/presign-put', {
+          method: 'POST',
+          body: JSON.stringify({
+            wineId: 'global',
+            shardId,
+            hash,
+          }),
+        });
+
+        const putResponse = await fetch(presign.putUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            ...(presign.requiredHeaders || {}),
+          },
+          body: mindArrayBuffer,
+        });
+        if (!putResponse.ok) {
+          throw new Error(`Не удалось загрузить shard ${shardIndex + 1} в R2 (${putResponse.status})`);
+        }
+
+        builtShards.push({
+          id: shardId,
+          key: presign.key,
           hash,
-          targetCount: compileItems.length,
-          targetWineMap: compileItems.map((item) => ({
+          targetCount: shardItems.length,
+          targetWineMap: shardItems.map((item) => ({
             wineId: item.wineId,
             role: item.role,
             assetHash: `${item.wineId}:${item.role}`,
           })),
+        });
+      }
+
+      await apiFetch('/api/admin/mind/finalize', {
+        method: 'POST',
+        body: JSON.stringify({
+          wineId: 'global',
+          shards: builtShards,
+          updatedAt: Date.now(),
         }),
       });
 
-      const putResponse = await fetch(presign.putUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          ...(presign.requiredHeaders || {}),
-        },
-        body: mindArrayBuffer,
-      });
-      if (!putResponse.ok) {
-        throw new Error(`Не удалось загрузить .mind в R2 (${putResponse.status})`);
-      }
-
       const manifest = await fetchTargetsManifest();
       setCompiledTargetsReady(Boolean(manifest?.ready));
-      setCompiledTargetCount(Number.parseInt(manifest?.targetCount, 10) || compileItems.length);
-      setCompiledTargetWineMap(Array.isArray(manifest?.targetWineMap) ? manifest.targetWineMap : []);
-      if (manifest?.url) {
-        setMindTargetSrc(manifest.url);
+      setCompiledShards(Array.isArray(manifest?.shards) ? manifest.shards : []);
+      setCompiledWineShardMap(manifest?.wineShardMap && typeof manifest.wineShardMap === 'object' ? manifest.wineShardMap : {});
+      const firstShard = manifest?.firstShard || manifest?.shards?.[0] || null;
+      setCompiledTargetCount(Number.parseInt(firstShard?.targetCount, 10) || 0);
+      setCompiledTargetWineMap(Array.isArray(firstShard?.targetWineMap) ? firstShard.targetWineMap : []);
+      setCurrentMindShardId(firstShard?.id || '');
+      if (firstShard?.url) {
+        setMindTargetSrc(firstShard.url);
       }
       setMindBuildStatus({ phase: 'ready', progress: 100, text: 'Mind dataset готов.' });
       setLabelProcess({

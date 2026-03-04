@@ -6,6 +6,7 @@ const LABEL_INDEX_KEY = 'label-index';
 const SESSION_PREFIX = 'session:';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const MIND_LATEST_PREFIX = 'mind:latest:';
+const MIND_MANIFEST_PREFIX = 'mind:manifest:';
 
 function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -200,6 +201,34 @@ async function createPresignedUrl(env, { method, key, expiresIn = 600, contentTy
 
 function getMindLatestKey(wineId) {
   return `${MIND_LATEST_PREFIX}${wineId}`;
+}
+
+function getMindManifestKey(wineId) {
+  return `${MIND_MANIFEST_PREFIX}${wineId}`;
+}
+
+function normalizeMindShard(value, fallbackIndex = 0) {
+  const id = String(value?.id || `shard-${fallbackIndex}`).trim() || `shard-${fallbackIndex}`;
+  const key = String(value?.key || '').trim();
+  const hash = String(value?.hash || '').trim() || null;
+  const targetCount = Number.parseInt(value?.targetCount, 10) || 0;
+  const targetWineMap = normalizeTargetWineMap(value?.targetWineMap);
+  return {
+    id,
+    key,
+    hash,
+    targetCount,
+    targetWineMap,
+  };
+}
+
+function normalizeMindShards(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item, index) => normalizeMindShard(item, index))
+    .filter((item) => item.key);
 }
 
 function normalizeWine(wine, fallbackIndex = 0) {
@@ -581,13 +610,12 @@ export default {
         const payload = await request.json();
         const wineId = String(payload?.wineId || 'global').trim() || 'global';
         const hash = String(payload?.hash || '').trim();
-        const targetCount = Number.parseInt(payload?.targetCount, 10) || 0;
-        const targetWineMap = normalizeTargetWineMap(payload?.targetWineMap);
+        const shardId = String(payload?.shardId || '').trim() || 'shard-0';
         if (!hash) {
           return json({ error: 'hash is required.' }, 400);
         }
 
-        const key = `mind/${wineId}/${hash}.mind`;
+        const key = `mind/${wineId}/shards/${shardId}/${hash}.mind`;
         const presigned = await createPresignedUrl(env, {
           method: 'PUT',
           key,
@@ -595,33 +623,10 @@ export default {
           contentType: 'application/octet-stream',
         });
 
-        await env.WINES_KV.put(
-          getMindLatestKey(wineId),
-          JSON.stringify({
-            key,
-            hash,
-            targetCount,
-            targetWineMap,
-            updatedAt: Date.now(),
-          })
-        );
-
-        if (wineId === 'global') {
-          await env.WINES_KV.put(
-            getMindLatestKey('global'),
-            JSON.stringify({
-              key,
-              hash,
-              targetCount,
-              targetWineMap,
-              updatedAt: Date.now(),
-            })
-          );
-        }
-
         return json({
           putUrl: presigned.url,
           key,
+          shardId,
           requiredHeaders: presigned.requiredHeaders,
         });
       } catch (error) {
@@ -629,54 +634,168 @@ export default {
       }
     }
 
-    if (url.pathname === '/api/mind/latest' && request.method === 'GET') {
-      const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
-      const raw = await env.WINES_KV.get(getMindLatestKey(wineId));
-      if (!raw) {
-        return json({ error: 'Mind dataset not found.' }, 404);
-      }
-      let latest = null;
-      try {
-        latest = JSON.parse(raw);
-      } catch {
-        return json({ error: 'Mind metadata corrupted.' }, 500);
+    if (url.pathname === '/api/admin/mind/finalize' && request.method === 'POST') {
+      const session = await requireAdmin(request, env);
+      if (!session) {
+        return json({ error: 'Unauthorized.' }, 401);
       }
 
-      const key = String(latest?.key || '').trim();
-      const hash = String(latest?.hash || '').trim();
-      const targetCount = Number.parseInt(latest?.targetCount, 10) || 0;
-      const targetWineMap = normalizeTargetWineMap(latest?.targetWineMap);
-      if (!key) {
-        return json({ error: 'Mind metadata invalid.' }, 500);
+      try {
+        const payload = await request.json();
+        const wineId = String(payload?.wineId || 'global').trim() || 'global';
+        const shards = normalizeMindShards(payload?.shards);
+        if (!shards.length) {
+          return json({ error: 'shards are required.' }, 400);
+        }
+        const updatedAt = Number.parseInt(payload?.updatedAt, 10) || Date.now();
+        const totalTargets = shards.reduce((sum, shard) => sum + (Number.parseInt(shard.targetCount, 10) || 0), 0);
+        const wineShardMap = {};
+        shards.forEach((shard) => {
+          shard.targetWineMap.forEach((item) => {
+            if (item?.wineId) {
+              wineShardMap[item.wineId] = shard.id;
+            }
+          });
+        });
+
+        const manifest = {
+          wineId,
+          ready: true,
+          updatedAt,
+          totalTargets,
+          shardCount: shards.length,
+          shards,
+          wineShardMap,
+        };
+        await env.WINES_KV.put(getMindManifestKey(wineId), JSON.stringify(manifest));
+
+        const firstShard = shards[0];
+        if (firstShard) {
+          await env.WINES_KV.put(
+            getMindLatestKey(wineId),
+            JSON.stringify({
+              key: firstShard.key,
+              hash: firstShard.hash,
+              targetCount: firstShard.targetCount,
+              targetWineMap: firstShard.targetWineMap,
+              shardId: firstShard.id,
+              updatedAt,
+            })
+          );
+        }
+
+        if (wineId === 'global') {
+          await env.WINES_KV.put(getMindManifestKey('global'), JSON.stringify(manifest));
+          if (firstShard) {
+            await env.WINES_KV.put(
+              getMindLatestKey('global'),
+              JSON.stringify({
+                key: firstShard.key,
+                hash: firstShard.hash,
+                targetCount: firstShard.targetCount,
+                targetWineMap: firstShard.targetWineMap,
+                shardId: firstShard.id,
+                updatedAt,
+              })
+            );
+          }
+        }
+
+        return json({ ok: true, manifest });
+      } catch (error) {
+        return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/mind/manifest' && request.method === 'GET') {
+      const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
+      const raw = await env.WINES_KV.get(getMindManifestKey(wineId));
+      if (!raw) {
+        return json({ error: 'Mind manifest not found.' }, 404);
+      }
+      let manifest = null;
+      try {
+        manifest = JSON.parse(raw);
+      } catch {
+        return json({ error: 'Mind manifest corrupted.' }, 500);
+      }
+      const shards = normalizeMindShards(manifest?.shards);
+      if (!shards.length) {
+        return json({ error: 'Mind manifest has no shards.' }, 500);
       }
 
       return json({
-        url: `/api/mind/file?wineId=${encodeURIComponent(wineId)}${hash ? `&v=${encodeURIComponent(hash)}` : ''}`,
-        hash: hash || null,
-        key,
-        targetCount,
-        targetWineMap,
+        ready: true,
+        wineId,
+        updatedAt: Number.parseInt(manifest?.updatedAt, 10) || Date.now(),
+        totalTargets: Number.parseInt(manifest?.totalTargets, 10) || shards.reduce((sum, shard) => sum + shard.targetCount, 0),
+        shardCount: Number.parseInt(manifest?.shardCount, 10) || shards.length,
+        wineShardMap: manifest?.wineShardMap && typeof manifest.wineShardMap === 'object' ? manifest.wineShardMap : {},
+        shards: shards.map((shard) => ({
+          id: shard.id,
+          hash: shard.hash,
+          key: shard.key,
+          targetCount: shard.targetCount,
+          targetWineMap: shard.targetWineMap,
+          url: `/api/mind/file?wineId=${encodeURIComponent(wineId)}&shardId=${encodeURIComponent(shard.id)}${shard.hash ? `&v=${encodeURIComponent(shard.hash)}` : ''}`,
+        })),
+      });
+    }
+
+    if (url.pathname === '/api/mind/latest' && request.method === 'GET') {
+      const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
+      const raw = await env.WINES_KV.get(getMindManifestKey(wineId));
+      if (!raw) {
+        return json({ error: 'Mind dataset not found.' }, 404);
+      }
+
+      let manifest = null;
+      try {
+        manifest = JSON.parse(raw);
+      } catch {
+        return json({ error: 'Mind manifest corrupted.' }, 500);
+      }
+      const shards = normalizeMindShards(manifest?.shards);
+      const firstShard = shards[0];
+      if (!firstShard) {
+        return json({ error: 'Mind manifest has no shards.' }, 500);
+      }
+      return json({
+        url: `/api/mind/file?wineId=${encodeURIComponent(wineId)}&shardId=${encodeURIComponent(firstShard.id)}${firstShard.hash ? `&v=${encodeURIComponent(firstShard.hash)}` : ''}`,
+        hash: firstShard.hash || null,
+        key: firstShard.key,
+        shardId: firstShard.id,
+        targetCount: firstShard.targetCount,
+        targetWineMap: firstShard.targetWineMap,
       });
     }
 
     if (url.pathname === '/api/mind/file' && request.method === 'GET') {
       const wineId = String(url.searchParams.get('wineId') || 'global').trim() || 'global';
-      const raw = await env.WINES_KV.get(getMindLatestKey(wineId));
+      const shardIdQuery = String(url.searchParams.get('shardId') || '').trim();
+      const raw = await env.WINES_KV.get(getMindManifestKey(wineId));
       if (!raw) {
-        return json({ error: 'Mind dataset not found.' }, 404);
+        return json({ error: 'Mind manifest not found.' }, 404);
       }
 
-      let latest = null;
+      let manifest = null;
       try {
-        latest = JSON.parse(raw);
+        manifest = JSON.parse(raw);
       } catch {
-        return json({ error: 'Mind metadata corrupted.' }, 500);
+        return json({ error: 'Mind manifest corrupted.' }, 500);
+      }
+      const shards = normalizeMindShards(manifest?.shards);
+      const shard = shardIdQuery
+        ? shards.find((item) => item.id === shardIdQuery)
+        : shards[0];
+      if (!shard) {
+        return json({ error: 'Mind shard not found.' }, 404);
       }
 
-      const key = String(latest?.key || '').trim();
-      const hash = String(latest?.hash || '').trim();
+      const key = String(shard.key || '').trim();
+      const hash = String(shard.hash || '').trim();
       if (!key) {
-        return json({ error: 'Mind metadata invalid.' }, 500);
+        return json({ error: 'Mind shard metadata invalid.' }, 500);
       }
 
       try {
