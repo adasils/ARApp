@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { createCanvas, loadImage } from 'canvas';
+import { CanvasElement, Image, ImageData, createCanvas, loadImage } from 'canvas';
 import { OfflineCompiler } from 'mind-ar/src/image-target/offline-compiler.js';
 
 const API_BASE_URL = String(process.env.API_BASE_URL || 'https://vinoria.app').replace(/\/+$/, '');
@@ -20,6 +20,20 @@ if (!globalThis.document) {
       throw new Error(`Unsupported document.createElement(${tag}) in Node compiler.`);
     },
   };
+}
+
+// MindAR compiler checks browser-like classes via `instanceof`.
+if (!globalThis.HTMLCanvasElement) {
+  globalThis.HTMLCanvasElement = CanvasElement;
+}
+if (!globalThis.HTMLImageElement) {
+  globalThis.HTMLImageElement = Image;
+}
+if (!globalThis.Image) {
+  globalThis.Image = Image;
+}
+if (!globalThis.ImageData) {
+  globalThis.ImageData = ImageData;
 }
 
 function chunkArray(items, size) {
