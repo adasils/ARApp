@@ -18,10 +18,9 @@ const LABEL_MAX_SIDE = 1800;
 const LABEL_JPEG_QUALITY = 0.9;
 const LABEL_ROLES = ['front', 'left', 'right'];
 const REQUIRED_LABEL_ROLES = ['front', 'left', 'right'];
-const COMPILE_IMAGE_MAX_SIDE = 1200;
-const COMPILE_IMAGE_QUALITY = 0.82;
+const COMPILE_IMAGE_MAX_SIDE = 960;
+const COMPILE_IMAGE_QUALITY = 0.72;
 const COMPILE_TIMEOUT_MS = 90000;
-let OfflineCompilerRef = null;
 
 async function fetchTargetsManifest() {
   try {
@@ -500,16 +499,44 @@ async function downscaleForCompile(dataUrl) {
   return canvas.toDataURL('image/jpeg', COMPILE_IMAGE_QUALITY);
 }
 
-async function getOfflineCompiler() {
-  if (OfflineCompilerRef) {
-    return OfflineCompilerRef;
-  }
-  const mod = await import(
-    /* @vite-ignore */
-    'https://esm.sh/mind-ar@1.2.5/src/image-target/offline-compiler.js'
-  );
-  OfflineCompilerRef = mod.OfflineCompiler;
-  return OfflineCompilerRef;
+function compileMindInWorker(images, onProgress) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./workers/mindCompiler.worker.js', import.meta.url), {
+      type: 'module',
+    });
+
+    const cleanup = () => {
+      worker.onmessage = null;
+      worker.onerror = null;
+      worker.terminate();
+    };
+
+    worker.onmessage = (event) => {
+      const payload = event.data || {};
+      if (payload.type === 'progress') {
+        if (typeof onProgress === 'function') {
+          onProgress(payload.progress);
+        }
+        return;
+      }
+      if (payload.type === 'done') {
+        cleanup();
+        resolve(payload.buffer);
+        return;
+      }
+      if (payload.type === 'error') {
+        cleanup();
+        reject(new Error(payload.message || 'Не удалось собрать .mind'));
+      }
+    };
+
+    worker.onerror = (event) => {
+      cleanup();
+      reject(new Error(event?.message || 'Ошибка компилятора .mind'));
+    };
+
+    worker.postMessage({ type: 'compile', images });
+  });
 }
 
 function getMindarVideoElement() {
@@ -1881,20 +1908,13 @@ export default function App() {
         }, COMPILE_TIMEOUT_MS);
         (async () => {
           try {
-            const images = [];
-            for (let i = 0; i < compileImages.length; i += 1) {
-              images.push(await loadImage(compileImages[i]));
-            }
-            const OfflineCompiler = await getOfflineCompiler();
-            const compiler = new OfflineCompiler();
-            await compiler.compileImageTargets(images, (progress) => {
+            const compiled = await compileMindInWorker(compileImages, (progress) => {
               setMindBuildStatus({
                 phase: 'compiling',
                 progress: Number.parseInt(progress, 10) || 0,
                 text: `Компиляция ${Number.parseInt(progress, 10) || 0}%`,
               });
             });
-            const compiled = compiler.exportData();
             window.clearTimeout(timeoutId);
             resolve(compiled);
           } catch (error) {
