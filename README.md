@@ -17,6 +17,7 @@ Production setup:
 - `DELETE /api/wines/:id`
 - `POST /api/admin/mind/presign-put`
 - `POST /api/admin/mind/finalize`
+- `POST /api/admin/mind/trigger-build`
 - `GET /api/mind/manifest`
 - `GET /api/mind/latest`
 - `POST /api/recognize/ocr`
@@ -49,6 +50,10 @@ Session cookie settings:
 - `TARGETS_ADMIN_KEY` (optional, service/admin header access)
 - `OCR_SPACE_API_KEY` (optional, OCR provider)
 - `ALLOWED_ORIGIN` (optional, comma-separated allowlist)
+- `GITHUB_TOKEN` (optional, to auto-trigger compile workflow)
+- `GITHUB_REPO` (optional, format `owner/repo`, e.g. `adasils/ARApp`)
+- `GITHUB_WORKFLOW_ID` (optional, default `compile-mind-targets.yml`)
+- `GITHUB_WORKFLOW_REF` (optional, default `master`)
 
 ## Local dev
 ```bash

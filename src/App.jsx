@@ -2093,6 +2093,13 @@ export default function App() {
         }),
       });
 
+      await apiFetch('/api/admin/mind/trigger-build', {
+        method: 'POST',
+        body: JSON.stringify({
+          wineId: 'global',
+        }),
+      }).catch(() => null);
+
       const manifest = await fetchTargetsManifest();
       setCompiledTargetsReady(Boolean(manifest?.ready));
       setCompiledShards(Array.isArray(manifest?.shards) ? manifest.shards : []);

@@ -7,6 +7,8 @@ const SESSION_PREFIX = 'session:';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 const MIND_LATEST_PREFIX = 'mind:latest:';
 const MIND_MANIFEST_PREFIX = 'mind:manifest:';
+const MIND_BUILD_TRIGGER_LOCK_KEY = 'mind:build:trigger:lock';
+const MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS = 60 * 5;
 
 function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -508,6 +510,37 @@ async function extractOcrDataFromImage(dataUrl, env) {
   return { text, lines };
 }
 
+async function triggerGithubMindBuild(env, wineId = 'global') {
+  const token = String(env.GITHUB_TOKEN || '').trim();
+  const repo = String(env.GITHUB_REPO || '').trim(); // owner/repo
+  const workflow = String(env.GITHUB_WORKFLOW_ID || '').trim() || 'compile-mind-targets.yml';
+  const ref = String(env.GITHUB_WORKFLOW_REF || '').trim() || 'master';
+  if (!token || !repo) {
+    throw new Error('GitHub workflow trigger is not configured.');
+  }
+
+  const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'vinoria-worker',
+    },
+    body: JSON.stringify({
+      ref,
+      inputs: {
+        wine_id: String(wineId || 'global'),
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.text().catch(() => '');
+    throw new Error(`GitHub dispatch failed (${response.status}): ${payload || 'unknown error'}`);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -704,6 +737,32 @@ export default {
         return json({ ok: true, manifest });
       } catch (error) {
         return json({ error: error.message || 'Invalid request body.' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/admin/mind/trigger-build' && request.method === 'POST') {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
+        return json({ error: 'Unauthorized.' }, 401);
+      }
+      try {
+        const lockRaw = await env.WINES_KV.get(MIND_BUILD_TRIGGER_LOCK_KEY);
+        if (lockRaw) {
+          return json({ ok: true, queued: false, reason: 'rate_limited' });
+        }
+        const payload = await request.json().catch(() => ({}));
+        const wineId = String(payload?.wineId || 'global').trim() || 'global';
+        await triggerGithubMindBuild(env, wineId);
+        await env.WINES_KV.put(MIND_BUILD_TRIGGER_LOCK_KEY, String(Date.now()), {
+          expirationTtl: MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS,
+        });
+        return json({
+          ok: true,
+          queued: true,
+          lockTtlSeconds: MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS,
+        });
+      } catch (error) {
+        return json({ error: error.message || 'Failed to trigger build.' }, 500);
       }
     }
 
