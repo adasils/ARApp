@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "compile:mind": "node scripts/compile-mind-from-worker.mjs"
   },
   "dependencies": {
-    "aws4fetch": "^1.0.20"
+    "aws4fetch": "^1.0.20",
+    "canvas": "npm:@napi-rs/canvas@^0.1.68",
+    "mind-ar": "^1.2.5"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

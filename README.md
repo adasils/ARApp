@@ -16,11 +16,18 @@ Production setup:
 - `PUT /api/wines/:id`
 - `DELETE /api/wines/:id`
 - `POST /api/admin/mind/presign-put`
+- `POST /api/admin/mind/finalize`
+- `GET /api/mind/manifest`
 - `GET /api/mind/latest`
 - `POST /api/recognize/ocr`
 - `POST /api/recognize/visual`
 - `GET /api/labels/records`
 - `GET /api/health`
+
+Mind compilation:
+- Runs in GitHub Actions (`.github/workflows/compile-mind-targets.yml`) on schedule/manual dispatch.
+- Compiler script: `worker/scripts/compile-mind-from-worker.mjs`
+- Uses shard-based manifest (`/api/mind/manifest`) for scanner loading.
 
 ## Auth
 Admin password is stored in Worker secret:
@@ -60,4 +67,3 @@ npx wrangler dev
 ```bash
 npm run build
 ```
-

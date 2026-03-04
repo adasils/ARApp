@@ -28,27 +28,53 @@ async function fetchTargetsManifest() {
     const response = await fetch(`${API_BASE_URL}/api/mind/manifest?wineId=global&ts=${Date.now()}`, {
       cache: 'no-store',
     });
-    if (!response.ok) {
+    if (response.ok) {
+      const payload = await response.json();
+      const shards = Array.isArray(payload?.shards) ? payload.shards : [];
+      const firstShard = shards[0] || null;
+      return {
+        ready: Boolean(payload?.ready) && shards.length > 0,
+        shards,
+        firstShard: firstShard
+          ? {
+            id: String(firstShard.id || 'shard-0'),
+            url: String(firstShard.url || ''),
+            hash: String(firstShard.hash || ''),
+            targetCount: Number.parseInt(firstShard.targetCount, 10) || 0,
+            targetWineMap: Array.isArray(firstShard.targetWineMap) ? firstShard.targetWineMap : [],
+          }
+          : null,
+        targetCount: Number.parseInt(payload?.totalTargets, 10) || 0,
+        targetWineMap: [],
+        wineShardMap: payload?.wineShardMap && typeof payload.wineShardMap === 'object' ? payload.wineShardMap : {},
+      };
+    }
+    if (response.status !== 404) {
       return null;
     }
-    const payload = await response.json();
-    const shards = Array.isArray(payload?.shards) ? payload.shards : [];
-    const firstShard = shards[0] || null;
+
+    // Backward compatibility: old worker exposes only /api/mind/latest
+    const latestResponse = await fetch(`${API_BASE_URL}/api/mind/latest?wineId=global&ts=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (!latestResponse.ok) {
+      return null;
+    }
+    const latestPayload = await latestResponse.json();
+    const firstShard = {
+      id: String(latestPayload?.shardId || 'shard-0'),
+      url: String(latestPayload?.url || ''),
+      hash: String(latestPayload?.hash || ''),
+      targetCount: Number.parseInt(latestPayload?.targetCount, 10) || 0,
+      targetWineMap: Array.isArray(latestPayload?.targetWineMap) ? latestPayload.targetWineMap : [],
+    };
     return {
-      ready: Boolean(payload?.ready) && shards.length > 0,
-      shards,
-      firstShard: firstShard
-        ? {
-          id: String(firstShard.id || 'shard-0'),
-          url: String(firstShard.url || ''),
-          hash: String(firstShard.hash || ''),
-          targetCount: Number.parseInt(firstShard.targetCount, 10) || 0,
-          targetWineMap: Array.isArray(firstShard.targetWineMap) ? firstShard.targetWineMap : [],
-        }
-        : null,
-      targetCount: Number.parseInt(payload?.totalTargets, 10) || 0,
-      targetWineMap: [],
-      wineShardMap: payload?.wineShardMap && typeof payload.wineShardMap === 'object' ? payload.wineShardMap : {},
+      ready: Boolean(firstShard.url),
+      shards: [firstShard],
+      firstShard,
+      targetCount: firstShard.targetCount,
+      targetWineMap: firstShard.targetWineMap,
+      wineShardMap: {},
     };
   } catch {
     return null;
@@ -520,44 +546,27 @@ async function downscaleForCompile(dataUrl) {
   return canvas.toDataURL('image/jpeg', COMPILE_IMAGE_QUALITY);
 }
 
-function compileMindInWorker(images, onProgress) {
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./workers/mindCompiler.worker.js', import.meta.url), {
-      type: 'module',
-    });
+async function getOfflineCompiler() {
+  const mod = await import(
+    /* @vite-ignore */
+    'https://esm.sh/mind-ar@1.2.5/src/image-target/offline-compiler.js'
+  );
+  return mod.OfflineCompiler;
+}
 
-    const cleanup = () => {
-      worker.onmessage = null;
-      worker.onerror = null;
-      worker.terminate();
-    };
-
-    worker.onmessage = (event) => {
-      const payload = event.data || {};
-      if (payload.type === 'progress') {
-        if (typeof onProgress === 'function') {
-          onProgress(payload.progress);
-        }
-        return;
-      }
-      if (payload.type === 'done') {
-        cleanup();
-        resolve(payload.buffer);
-        return;
-      }
-      if (payload.type === 'error') {
-        cleanup();
-        reject(new Error(payload.message || 'Не удалось собрать .mind'));
-      }
-    };
-
-    worker.onerror = (event) => {
-      cleanup();
-      reject(new Error(event?.message || 'Ошибка компилятора .mind'));
-    };
-
-    worker.postMessage({ type: 'compile', images });
+async function compileMindInBrowser(images, onProgress) {
+  const loadedImages = [];
+  for (let i = 0; i < images.length; i += 1) {
+    loadedImages.push(await loadImage(images[i]));
+  }
+  const OfflineCompiler = await getOfflineCompiler();
+  const compiler = new OfflineCompiler();
+  await compiler.compileImageTargets(loadedImages, (progress) => {
+    if (typeof onProgress === 'function') {
+      onProgress(progress);
+    }
   });
+  return compiler.exportData();
 }
 
 function getMindarVideoElement() {
@@ -2000,7 +2009,7 @@ export default function App() {
           }, COMPILE_TIMEOUT_MS);
           (async () => {
             try {
-              const compiled = await compileMindInWorker(
+              const compiled = await compileMindInBrowser(
                 shardItems.map((item) => item.dataUrl),
                 (progress) => {
                   const normalizedProgress = Number.parseInt(progress, 10) || 0;

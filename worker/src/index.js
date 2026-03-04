@@ -601,8 +601,8 @@ export default {
     }
 
     if (url.pathname === '/api/admin/mind/presign-put' && request.method === 'POST') {
-      const session = await requireAdmin(request, env);
-      if (!session) {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
         return json({ error: 'Unauthorized.' }, 401);
       }
 
@@ -635,8 +635,8 @@ export default {
     }
 
     if (url.pathname === '/api/admin/mind/finalize' && request.method === 'POST') {
-      const session = await requireAdmin(request, env);
-      if (!session) {
+      const allowed = await hasAdminAccess(request, env);
+      if (!allowed) {
         return json({ error: 'Unauthorized.' }, 401);
       }
 

@@ -1,0 +1,33 @@
+name: Compile Mind Targets
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+jobs:
+  compile-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install compiler deps
+        working-directory: worker
+        run: npm install
+
+      - name: Run compiler
+        working-directory: worker
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          TARGETS_ADMIN_KEY: ${{ secrets.TARGETS_ADMIN_KEY }}
+          MIND_WINE_ID: global
+          MIND_SHARD_SIZE: "80"
+        run: node scripts/compile-mind-from-worker.mjs
