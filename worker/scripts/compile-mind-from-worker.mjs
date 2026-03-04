@@ -1,6 +1,18 @@
 import crypto from 'node:crypto';
-import { CanvasElement, Image, ImageData, createCanvas, loadImage } from 'canvas';
+import { createRequire } from 'node:module';
 import { OfflineCompiler } from 'mind-ar/src/image-target/offline-compiler.js';
+
+const require = createRequire(import.meta.url);
+const offlineCompilerPath = require.resolve('mind-ar/src/image-target/offline-compiler.js');
+const mindArRequire = createRequire(offlineCompilerPath);
+const mindArCanvas = mindArRequire('canvas');
+const {
+  createCanvas,
+  loadImage,
+  CanvasElement,
+  Image,
+  ImageData,
+} = mindArCanvas;
 
 const API_BASE_URL = String(process.env.API_BASE_URL || 'https://vinoria.app').replace(/\/+$/, '');
 const TARGETS_ADMIN_KEY = String(process.env.TARGETS_ADMIN_KEY || '').trim();
