@@ -777,7 +777,11 @@ export default {
           lockTtlSeconds: MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS,
         });
       } catch (error) {
-        return json({ error: error.message || 'Failed to trigger build.' }, 500);
+        return json({
+          ok: false,
+          queued: false,
+          error: error.message || 'Failed to trigger build.',
+        });
       }
     }
 

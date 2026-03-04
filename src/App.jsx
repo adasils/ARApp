@@ -2102,13 +2102,9 @@ export default function App() {
         ok: false,
         error: error?.message || 'Не удалось запустить сборку в GitHub Actions.',
       }));
-
-      if (triggerPayload?.ok === false) {
-        setNotice({
-          text: `Mind dataset собран, но автозапуск CI не удался: ${triggerPayload.error}`,
-          type: 'error',
-        });
-      }
+      const triggerWarning = triggerPayload?.ok === false
+        ? `Mind dataset собран, но автозапуск CI не удался: ${triggerPayload.error}`
+        : '';
 
       const manifest = await fetchTargetsManifest();
       setCompiledTargetsReady(Boolean(manifest?.ready));
@@ -2128,7 +2124,12 @@ export default function App() {
         targetIndex: Number.parseInt(form.targetIndex, 10) || 0,
         error: '',
       });
-      setNotice({ text: 'Этикетки скомпилированы и загружены в R2.', type: 'success' });
+      setNotice({
+        text: triggerWarning
+          ? `Этикетки скомпилированы и загружены в R2. ${triggerWarning}`
+          : 'Этикетки скомпилированы и загружены в R2.',
+        type: triggerWarning ? 'error' : 'success',
+      });
     } catch (error) {
       setMindBuildStatus({ phase: 'error', progress: 0, text: error.message || 'Ошибка сборки .mind' });
       setLabelProcess({
