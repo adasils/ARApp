@@ -514,31 +514,45 @@ async function triggerGithubMindBuild(env, wineId = 'global') {
   const token = String(env.GITHUB_TOKEN || '').trim();
   const repo = String(env.GITHUB_REPO || '').trim(); // owner/repo
   const workflow = String(env.GITHUB_WORKFLOW_ID || '').trim() || 'compile-mind-targets.yml';
-  const ref = String(env.GITHUB_WORKFLOW_REF || '').trim() || 'master';
+  const configuredRef = String(env.GITHUB_WORKFLOW_REF || '').trim();
   if (!token || !repo) {
     throw new Error('GitHub workflow trigger is not configured.');
   }
 
-  const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'vinoria-worker',
-    },
-    body: JSON.stringify({
-      ref,
-      inputs: {
-        wine_id: String(wineId || 'global'),
-      },
-    }),
-  });
+  const refsToTry = [...new Set([
+    configuredRef || null,
+    'master',
+    'main',
+  ].filter(Boolean))];
 
-  if (!response.ok) {
+  let lastError = '';
+
+  for (let i = 0; i < refsToTry.length; i += 1) {
+    const ref = refsToTry[i];
+    const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'vinoria-worker',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({
+        ref,
+        inputs: {
+          wine_id: String(wineId || 'global'),
+        },
+      }),
+    });
+    if (response.ok) {
+      return { ref };
+    }
     const payload = await response.text().catch(() => '');
-    throw new Error(`GitHub dispatch failed (${response.status}): ${payload || 'unknown error'}`);
+    lastError = `ref=${ref}, status=${response.status}, body=${payload || 'empty'}`;
   }
+
+  throw new Error(`GitHub dispatch failed: ${lastError || 'unknown error'}`);
 }
 
 export default {
@@ -752,13 +766,14 @@ export default {
         }
         const payload = await request.json().catch(() => ({}));
         const wineId = String(payload?.wineId || 'global').trim() || 'global';
-        await triggerGithubMindBuild(env, wineId);
+        const triggered = await triggerGithubMindBuild(env, wineId);
         await env.WINES_KV.put(MIND_BUILD_TRIGGER_LOCK_KEY, String(Date.now()), {
           expirationTtl: MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS,
         });
         return json({
           ok: true,
           queued: true,
+          ref: triggered?.ref || null,
           lockTtlSeconds: MIND_BUILD_TRIGGER_LOCK_TTL_SECONDS,
         });
       } catch (error) {

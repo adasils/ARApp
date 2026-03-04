@@ -2093,12 +2093,22 @@ export default function App() {
         }),
       });
 
-      await apiFetch('/api/admin/mind/trigger-build', {
+      const triggerPayload = await apiFetch('/api/admin/mind/trigger-build', {
         method: 'POST',
         body: JSON.stringify({
           wineId: 'global',
         }),
-      }).catch(() => null);
+      }).catch((error) => ({
+        ok: false,
+        error: error?.message || 'Не удалось запустить сборку в GitHub Actions.',
+      }));
+
+      if (triggerPayload?.ok === false) {
+        setNotice({
+          text: `Mind dataset собран, но автозапуск CI не удался: ${triggerPayload.error}`,
+          type: 'error',
+        });
+      }
 
       const manifest = await fetchTargetsManifest();
       setCompiledTargetsReady(Boolean(manifest?.ready));
