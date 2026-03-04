@@ -30,6 +30,14 @@ function chunkArray(items, size) {
   return out;
 }
 
+function dataUrlToBuffer(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) {
+    throw new Error('Invalid label image data URL.');
+  }
+  return Buffer.from(match[1], 'base64');
+}
+
 async function apiGet(path, withAdmin = false) {
   const headers = {
     'Accept': 'application/json',
@@ -112,7 +120,12 @@ async function compileShard(shardItems, shardIndex, shardCount) {
   const compiler = new OfflineCompiler();
   const images = [];
   for (let i = 0; i < shardItems.length; i += 1) {
-    images.push(await loadImage(shardItems[i].dataUrl));
+    const imageBuffer = dataUrlToBuffer(shardItems[i].dataUrl);
+    const loaded = await loadImage(imageBuffer);
+    const canvas = createCanvas(loaded.width, loaded.height);
+    const context = canvas.getContext('2d');
+    context.drawImage(loaded, 0, 0, loaded.width, loaded.height);
+    images.push(canvas);
   }
   await compiler.compileImageTargets(images, (progress) => {
     const p = Number.parseInt(progress, 10) || 0;
